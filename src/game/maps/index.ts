@@ -12,4 +12,4 @@ export function getMap(id: string): MapDefinition {
   return MAPS.find(m => m.id === id) ?? MAPS[0];
 }
 
-export type { MapDefinition } from "./types";
+export type { MapDefinition, Vec3 } from "./types";

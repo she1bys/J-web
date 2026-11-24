@@ -1,8 +1,7 @@
 import { fbm2 } from "../../core/noise";
 import { Block } from "../world/blocks";
 import type { MapDefinition } from "./types";
-import { bitmapSign, palmTree } from "./shared/structures";
-import { pickLetterSpots } from "./shared/letters";
+import { palmTree } from "./shared/structures";
 
 /** Sandy islands in a warm sea, always close to golden hour. Swim between them. */
 export const sunsetIslands: MapDefinition = {
@@ -16,7 +15,7 @@ export const sunsetIslands: MapDefinition = {
   hotbar: [Block.Sand, Block.Grass, Block.PalmWood, Block.Planks, Block.Leaves, Block.Glass, Block.Lantern, Block.Brick, Block.Rose],
   startTime: 0.44,
 
-  generate(w, { rng, titleRows, letterCount }) {
+  generate(w, { seed, rng }) {
     const SEA = 9;
     const cx = w.sx / 2;
     const cz = w.sz / 2;
@@ -25,7 +24,7 @@ export const sunsetIslands: MapDefinition = {
       for (let x = 0; x < w.sx; x++) {
         // Island blobs: noise, pulled down toward the map edges so the sea surrounds everything.
         const edge = Math.min(x, z, w.sx - 1 - x, w.sz - 1 - z) / 16;
-        const n = fbm2(x / 20, z / 20, 21, 4) * Math.min(1, edge);
+        const n = fbm2(x / 20, z / 20, seed + 17, 4) * Math.min(1, edge);
         const h = Math.floor(3 + n * 15);
         for (let y = 0; y <= h; y++) {
           const land = h > SEA;
@@ -57,12 +56,8 @@ export const sunsetIslands: MapDefinition = {
       }
     }
 
-    const width = titleRows[0].length;
-    bitmapSign(w, titleRows, Math.floor((w.sx - width) / 2), 22, 8, Block.Rose);
-
     return {
       spawn: { x: spawn.x + 0.5, y: w.surfaceY(spawn.x, spawn.z) + 1, z: spawn.z + 0.5, yaw: 0 },
-      letterSpots: pickLetterSpots(w, rng, letterCount, spawn, { minApart: 14, minFromSpawn: 10 }),
     };
   },
 };

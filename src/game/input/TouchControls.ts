@@ -14,8 +14,8 @@ const capture = (el: Element, id: number) => {
  * Phone and tablet controls, built for landscape and thumbs:
  * - Left half: a joystick appears wherever your thumb lands. Push it to the edge to sprint.
  * - Right half: drag anywhere to look around.
- * - Right thumb buttons: JUMP (big), MINE (hold), BUILD (tap). Double-tap JUMP to fly in creative.
- * - Top bar: camera, fly and pause.
+ * - Right thumb buttons: JUMP (big), MINE (hold), USE (tap: build or eat). Double-tap JUMP to fly in creative.
+ * - Top bar: items (BAG), commands (CMD), camera, and fly in creative.
  */
 export class TouchControls {
   readonly root: HTMLElement;
@@ -35,7 +35,7 @@ export class TouchControls {
     private state: InputState,
     private actions: InputActions,
     private viewport: Viewport,
-    allowFlight: boolean,
+    flight: boolean,
   ) {
     this.root = document.createElement("div");
     this.root.className = "t-root";
@@ -43,18 +43,20 @@ export class TouchControls {
       <div class="t-stick"><div class="t-knob"></div></div>
       <div class="t-actions">
         <button class="t-btn t-mine" type="button">MINE</button>
-        <button class="t-btn t-build" type="button">BUILD</button>
+        <button class="t-btn t-build" type="button">USE</button>
         <button class="t-btn t-jump" type="button">JUMP</button>
       </div>
       <div class="t-top">
-        <button class="t-btn t-small t-cam" type="button">CAM</button>
         <button class="t-btn t-small t-fly" type="button">FLY</button>
+        <button class="t-btn t-small t-cmd" type="button">CMD</button>
+        <button class="t-btn t-small t-cam" type="button">CAM</button>
+        <button class="t-btn t-small t-bag" type="button">BAG</button>
       </div>`;
     parent.appendChild(this.root);
     this.stick = this.root.querySelector(".t-stick")!;
     this.knob = this.root.querySelector(".t-knob")!;
     this.flyBtn = this.root.querySelector(".t-fly")!;
-    this.flyBtn.hidden = !allowFlight;
+    this.flyBtn.hidden = !flight;
 
     surface.addEventListener("pointerdown", this.onDown);
     surface.addEventListener("pointermove", this.onMove);
@@ -69,9 +71,15 @@ export class TouchControls {
       if (now - this.lastJump < 300) this.actions.toggleFly();
       this.lastJump = now;
     });
-    this.tap(".t-build", () => this.actions.place());
+    this.tap(".t-build", () => this.actions.use());
+    this.tap(".t-bag", () => this.actions.openInventory());
+    this.tap(".t-cmd", () => this.actions.openCommands("/"));
     this.tap(".t-cam", () => this.actions.toggleCamera());
     this.tap(".t-fly", () => this.actions.toggleFly());
+  }
+
+  setFlightAllowed(on: boolean): void {
+    this.flyBtn.hidden = !on;
   }
 
   setFlying(on: boolean): void {

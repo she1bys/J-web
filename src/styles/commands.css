@@ -1,0 +1,44 @@
+/* The command line and its message log. */
+.cmd {
+  position: absolute; left: max(10px, env(safe-area-inset-left)); bottom: calc(var(--slot, 44px) + 70px + env(safe-area-inset-bottom));
+  width: min(560px, calc(100% - 20px)); z-index: 14;
+  display: flex; flex-direction: column; gap: 4px;
+  font-family: var(--font-pixel); pointer-events: none;
+}
+.cmd.open { pointer-events: auto; }
+.cmd-log {
+  max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px;
+  scrollbar-width: none;
+}
+.cmd-line {
+  align-self: flex-start; max-width: 100%;
+  font-size: 11px; line-height: 1.5; padding: 2px 8px; overflow-wrap: anywhere;
+  background: rgba(255, 255, 255, .88); border-left: 4px solid var(--ink);
+  transition: opacity .6s steps(3);
+}
+.cmd-line.ok { border-left-color: #3fbf4a; }
+.cmd-line.error { border-left-color: #e83a3a; color: #a01010; }
+.cmd-line.old { opacity: 0; }
+.cmd.open .cmd-line.old { opacity: 1; }
+
+.cmd-suggest { display: flex; flex-wrap: wrap; gap: 4px; }
+.cmd-suggest[hidden] { display: none; }
+.cmd-suggest button {
+  font: 11px var(--font-pixel); padding: 5px 8px; cursor: pointer;
+  background: var(--paper); border: 2px solid var(--ink);
+}
+.cmd-suggest button:active { background: var(--ink); color: var(--paper); }
+
+.cmd-form { display: flex; gap: 4px; }
+.cmd-form[hidden] { display: none; }
+.cmd-input {
+  flex: 1; min-width: 0; height: 40px; padding: 0 10px;
+  font: 14px var(--font-pixel); color: var(--ink);
+  background: var(--paper); border: 3px solid var(--ink); outline: none;
+  -webkit-user-select: text; user-select: text;
+}
+.cmd-send, .cmd-close {
+  height: 40px; min-width: 46px; font: 12px var(--font-pixel); text-transform: uppercase; cursor: pointer;
+  background: var(--paper); border: 3px solid var(--ink);
+}
+.cmd-send:active, .cmd-close:active { background: var(--ink); color: var(--paper); }

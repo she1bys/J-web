@@ -1,6 +1,6 @@
 /**
  * Stop the page from zooming on phones. The viewport meta tag handles most browsers;
- * iPhone Safari ignores it, so pinch and double-tap gestures are cancelled here too.
+ * iPhone Safari ignores it, so pinch gestures are cancelled here too.
  */
 export function blockZoomGestures(): void {
   const stop = (e: Event) => e.preventDefault();
@@ -15,17 +15,8 @@ export function blockZoomGestures(): void {
     },
     { passive: false },
   );
-  // Double-tap zoom
-  let lastTouchEnd = 0;
-  document.addEventListener(
-    "touchend",
-    e => {
-      const now = Date.now();
-      if (now - lastTouchEnd < 300) e.preventDefault();
-      lastTouchEnd = now;
-    },
-    { passive: false },
-  );
+  // Double-tap zoom is turned off with `touch-action: manipulation` in base.css. (Cancelling
+  // quick second taps in script would also swallow fast taps on buttons, so we don't.)
   // Long-press menus and Ctrl+wheel zoom on desktop
   document.addEventListener("contextmenu", e => {
     if ((e.target as HTMLElement).closest(".play-layer")) e.preventDefault();

@@ -1,0 +1,98 @@
+/* Inventory, crafting and the creative palette. */
+.inv {
+  position: absolute; inset: 0; z-index: 15;
+  display: grid; place-items: center;
+  background: rgba(255, 255, 255, .55);
+  font-family: var(--font-pixel); text-transform: uppercase;
+}
+.inv[hidden] { display: none; }
+
+.inv-panel {
+  max-width: calc(100% - 16px); max-height: calc(100% - 16px);
+  display: flex; flex-direction: column;
+  background: var(--paper); border: 3px solid var(--ink); box-shadow: 6px 6px 0 var(--ink);
+}
+.inv-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 8px 6px 12px; border-bottom: 3px solid var(--ink);
+  font-size: 13px; letter-spacing: .2em;
+}
+.inv-x {
+  width: 36px; height: 32px; font-size: 13px; cursor: pointer;
+  background: var(--paper); border: 3px solid var(--ink);
+}
+.inv-x:active { background: var(--ink); color: var(--paper); }
+
+.inv-body { display: flex; gap: 12px; padding: 10px; min-height: 0; overflow: hidden; }
+.inv-left { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
+.inv-side { display: flex; flex-direction: column; gap: 6px; min-width: 200px; max-width: 300px; min-height: 0; }
+.inv-sub { font-size: 10px; letter-spacing: .2em; }
+
+.inv-grid { display: grid; grid-template-columns: repeat(9, var(--islot)); gap: 2px; }
+.inv-bar { padding-top: 6px; border-top: 3px dashed var(--ink); }
+.inv-palette { grid-template-columns: repeat(6, var(--islot)); overflow-y: auto; align-content: start; padding-right: 4px; }
+
+.inv { --islot: 40px; }
+.inv-slot {
+  position: relative; width: var(--islot); height: var(--islot); padding: 4px;
+  background: #f1f1f1; border: 2px solid var(--ink); cursor: pointer; touch-action: none;
+}
+.inv-slot:hover { background: #ffe1ec; }
+.inv-slot .icon, .h-slot .icon { display: block; width: 100%; height: 100%; image-rendering: pixelated; pointer-events: none; }
+
+/* Stack count and tool wear, shared with the hotbar */
+.count {
+  position: absolute; right: 2px; bottom: 0; font: 10px var(--font-pixel); color: var(--ink);
+  text-shadow: 1px 0 #fff, -1px 0 #fff, 0 1px #fff, 0 -1px #fff; pointer-events: none;
+}
+.wear {
+  position: absolute; left: 4px; right: 4px; bottom: 3px; height: 3px; background: #333; pointer-events: none;
+}
+.wear::after {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0;
+  width: var(--wear); background: var(--wear-color);
+}
+
+.inv-tools { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.inv-hand { display: flex; align-items: center; gap: 8px; font-size: 10px; letter-spacing: .15em; }
+.inv-trash {
+  height: 36px; padding: 0 12px; font-size: 11px; letter-spacing: .12em; cursor: pointer;
+  background: var(--paper); border: 2px solid var(--ink);
+}
+.inv-trash:active { background: var(--ink); color: var(--paper); }
+
+/* Item following the mouse while held */
+.inv-float {
+  position: fixed; left: 0; top: 0; width: 32px; height: 32px; margin: -16px 0 0 -16px;
+  pointer-events: none; z-index: 2;
+}
+.inv-float[hidden] { display: none; }
+
+.inv-recipes { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; padding-right: 4px; }
+.inv-recipe {
+  display: grid; grid-template-columns: 34px 1fr; grid-template-rows: auto auto; column-gap: 8px; row-gap: 2px;
+  align-items: center; text-align: left; padding: 4px 6px; cursor: pointer;
+  background: var(--paper); border: 2px solid var(--ink);
+}
+.inv-recipe:hover { background: #ffe1ec; }
+.inv-recipe:active { background: var(--ink); color: var(--paper); }
+.inv-recipe.no { opacity: .45; cursor: default; }
+.r-out { grid-row: 1 / span 2; position: relative; width: 34px; height: 34px; }
+.r-out .icon { width: 100%; height: 100%; image-rendering: pixelated; }
+.r-out b, .r-in b { position: absolute; right: -2px; bottom: -3px; font: 9px var(--font-pixel); text-shadow: 1px 0 #fff, -1px 0 #fff, 0 1px #fff, 0 -1px #fff; }
+.r-name { font-size: 10px; letter-spacing: .08em; }
+.r-in { display: flex; gap: 6px; }
+.r-in > span { position: relative; width: 18px; height: 18px; }
+.r-in .icon { width: 100%; height: 100%; image-rendering: pixelated; }
+.r-in .miss { opacity: .35; }
+
+@media (max-height: 430px) {
+  .inv { --islot: 34px; }
+  .inv-body { padding: 6px; gap: 8px; }
+  .inv-side { min-width: 170px; }
+}
+@media (max-width: 640px) and (min-height: 431px) {
+  .inv-body { flex-direction: column; overflow-y: auto; }
+  .inv { --islot: min(36px, calc((100vw - 60px) / 9)); }
+  .inv-side { max-width: none; max-height: 40vh; }
+}

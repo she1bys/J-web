@@ -17,6 +17,8 @@ export interface PlayerEvents {
   /** Set when a footstep should sound: the block underfoot. */
   step: number | null;
   splashed: boolean;
+  /** Blocks fallen before landing (0 if no hard landing). */
+  fell: number;
 }
 
 const HALF_WIDTH = 0.3;
@@ -43,8 +45,15 @@ export class Player {
   /** Horizontal speed this frame, for animation. */
   speed = 0;
   private stepDistance = 0;
+  /** Highest point since last standing, for fall damage. */
+  private peakY = 0;
 
   constructor(private world: World) {}
+
+  /** Reset fall tracking (after teleporting). */
+  resetFall(): void {
+    this.peakY = this.pos.y;
+  }
 
   get eye(): THREE.Vector3 {
     return new THREE.Vector3(this.pos.x, this.pos.y + EYE_HEIGHT, this.pos.z);
@@ -89,7 +98,7 @@ export class Player {
   }
 
   update(dt: number, input: MoveIntent, autoJump: boolean): PlayerEvents {
-    const ev: PlayerEvents = { jumped: false, landed: false, step: null, splashed: false };
+    const ev: PlayerEvents = { jumped: false, landed: false, step: null, splashed: false, fell: 0 };
     const w = this.world;
     const p = this.pos;
     const v = this.vel;
@@ -137,6 +146,9 @@ export class Player {
     this.onGround = hitY && v.y < 0;
     if (hitY) v.y = 0;
     if (this.onGround && !wasOnGround && fallSpeed < -6) ev.landed = true;
+    if (this.onGround && !wasOnGround) ev.fell = Math.max(0, this.peakY - p.y);
+    if (this.onGround || this.inWater || this.flying) this.peakY = p.y;
+    else this.peakY = Math.max(this.peakY, p.y);
     if (this.onGround && this.flying) this.flying = false;
 
     this.speed = Math.hypot(v.x, v.z);

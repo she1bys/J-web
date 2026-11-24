@@ -5,6 +5,8 @@ import "./styles/menu.css";
 import "./styles/cinematic.css";
 import "./styles/game.css";
 import "./styles/touch.css";
+import "./styles/inventory.css";
+import "./styles/commands.css";
 import { App } from "./app/App";
 import { blockZoomGestures } from "./core/mobile";
 

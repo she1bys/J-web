@@ -5,7 +5,8 @@
 export type MenuItem =
   | { kind: "title"; text: string }
   | { kind: "text"; text: string }
-  | { kind: "button"; label: string; detail?: string; onSelect: () => void; onAdjust?: (dir: 1 | -1) => void };
+  | { kind: "button"; label: string; detail?: string; onSelect: () => void; onAdjust?: (dir: 1 | -1) => void }
+  | { kind: "input"; label: string; value: string; placeholder?: string; maxLength?: number; onInput: (v: string) => void };
 
 export const title = (text: string): MenuItem => ({ kind: "title", text });
 export const text = (t: string): MenuItem => ({ kind: "text", text: t });
@@ -14,6 +15,13 @@ export const button = (
   onSelect: () => void,
   extra: { detail?: string; onAdjust?: (dir: 1 | -1) => void } = {},
 ): MenuItem => ({ kind: "button", label, onSelect, ...extra });
+
+export const input = (
+  label: string,
+  value: string,
+  onInput: (v: string) => void,
+  extra: { placeholder?: string; maxLength?: number } = {},
+): MenuItem => ({ kind: "input", label, value, onInput, ...extra });
 
 export class Menu {
   private adjusters = new WeakMap<HTMLButtonElement, (dir: 1 | -1) => void>();
@@ -31,6 +39,22 @@ export class Menu {
         node = document.createElement("h2");
         node.className = "menu-title";
         node.textContent = item.text;
+      } else if (item.kind === "input") {
+        node = document.createElement("label");
+        node.className = "field";
+        const l = document.createElement("span");
+        l.className = "field-label";
+        l.textContent = item.label;
+        const f = document.createElement("input");
+        f.type = "text";
+        f.value = item.value;
+        f.placeholder = item.placeholder ?? "";
+        f.maxLength = item.maxLength ?? 32;
+        f.autocomplete = "off";
+        f.spellcheck = false;
+        f.addEventListener("input", () => item.onInput(f.value));
+        f.addEventListener("keydown", e => e.stopPropagation());
+        node.append(l, f);
       } else if (item.kind === "text") {
         node = document.createElement("p");
         node.className = "menu-text";

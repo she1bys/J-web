@@ -1,8 +1,8 @@
 # Joana
 
-A pixel-art block world that runs in the browser, on computers and phones.
-Her name is the title screen. Tap it to open the menu, pick a map, explore, mine, build,
-and find the five hidden pink letters.
+A pixel-art block game that runs in the browser, on computers and phones.
+Her name is the title screen. Tap it to open the menu, create or load a world, and play in
+**Survival** (health, hunger, gather, craft) or **Creative** (every block, flying).
 
 ## Tech stack
 
@@ -47,7 +47,7 @@ Then open the address Vite prints (usually http://localhost:5173).
 │   ├── main.ts                Entry point: styles + starts the App
 │   ├── app/App.ts             The flow: title → menus → intro → game → pause
 │   ├── config/
-│   │   ├── game.ts            Title text, hidden word, credits  ← rename the game here
+│   │   ├── game.ts            Title text and credits  ← rename the game here
 │   │   └── settings.ts        Player settings and their defaults
 │   ├── core/                  Small shared building blocks
 │   │   ├── audio.ts           Sound effects, synthesised in code
@@ -66,19 +66,61 @@ Then open the address Vite prints (usually http://localhost:5173).
 │   ├── ui/Menu.ts             Menu rendering and keyboard navigation
 │   ├── styles/                CSS, one file per area
 │   └── game/
-│       ├── Game.ts            Runs a map: world, player, camera, HUD, saving
-│       ├── world/             Blocks, the world grid, chunk meshing, raycasting, saves
+│       ├── Game.ts            Runs a world: blocks, player, inventory, survival, commands, saving
+│       ├── modes.ts           Survival / creative rules
+│       ├── world/             Blocks, the world grid, chunk meshing, raycasting, saved worlds
+│       ├── items/             Item list, icons, inventory, crafting recipes, block drops
+│       ├── survival/          Health, hunger and air
+│       ├── entities/          Dropped items lying in the world
+│       ├── commands/          The command system (/give, /tp, …), one registry + built-ins
 │       ├── textures/          Pixel-art texture atlas painted in code
-│       ├── player/            Physics, camera rig, character model
+│       ├── player/            Physics, camera rig, character model, item in hand
 │       ├── input/             Keyboard + mouse, and touch controls
-│       ├── hud/               Item bar, crosshair, letters, messages
+│       ├── hud/               Item bar, vitals, inventory screen, command bar, death screen
 │       ├── effects/           Sky + day/night, clouds, debris, block selection
-│       ├── collectibles/      The hidden letters
-│       └── maps/              One file per map, plus shared/ helpers
+│       └── maps/              One file per map type, plus shared/ helpers
 ├── tests/                     Unit tests
 ├── docs/                      Guides for extending the game
 └── .github/workflows/         CI: type-check, test, build, deploy to GitHub Pages
 ```
+
+## Worlds and game modes
+
+**Play** opens your worlds: load a saved one, or **Create new world** with a name, a map type,
+a mode and an optional seed (same seed = same terrain). Worlds are saved in the browser,
+including everything built, your inventory, health and position.
+
+| | Survival | Creative |
+| --- | --- | --- |
+| Health, hunger, air | Yes: fall damage, drowning, starving | No |
+| Mining | Takes time; tools speed it up; stone needs a pickaxe | Instant |
+| Blocks | Mined blocks drop as items; placing uses them up | Unlimited, from the palette |
+| Flying | No | Double-tap jump, or `/fly` |
+| Inventory | Backpack + crafting list | Backpack + every item |
+
+Eat apples (they drop from leaves) by selecting them and pressing *use*.
+Switch any time with `/gamemode survival` or `/gamemode creative`.
+
+## Commands
+
+Press **T** or **/** (or **CMD** on a phone). Tab completes; ↑/↓ recalls earlier commands.
+
+| Command | What it does |
+| --- | --- |
+| `/help [command]` | List commands or explain one |
+| `/gamemode <survival\|creative>` | Switch mode (`/gm s`, `/gm c`) |
+| `/give <item> [count]` | Get items: `/give stone_pickaxe`, `/give planks 64` |
+| `/items` | List every item name |
+| `/tp <x> <y> <z>` | Teleport; `~` is relative: `/tp ~ ~10 ~` |
+| `/spawn`, `/setspawn [x y z]` | Go to / set the respawn point |
+| `/time <set\|add\|query> …` | `sunrise`, `noon`, `sunset`, `midnight`, or hours (0–24) |
+| `/setblock x y z <block>` | Place or remove one block |
+| `/fill x1 y1 z1 x2 y2 z2 <block>` | Fill a box (up to 32,768 blocks) |
+| `/gamerule <keepInventory\|dayCycle> [true\|false]` | World rules |
+| `/heal`, `/feed`, `/kill`, `/clear`, `/fly`, `/pos`, `/seed` | Handy extras |
+
+Adding a command: write a `Command` in `src/game/commands/builtin.ts` (or a new file) and register it.
+Commands only use the `CommandContext` interface, so they'll also work on a multiplayer server later.
 
 ## Maps
 
@@ -88,9 +130,10 @@ Then open the address Vite prints (usually http://localhost:5173).
 | Desert | `src/game/maps/desert.ts` | Dunes, cacti, palm oasis, stepped pyramid |
 | Snowy Peaks | `src/game/maps/snowyPeaks.ts` | Mountains, pines, frozen lake |
 | Sunset Islands | `src/game/maps/sunsetIslands.ts` | Islands in a warm sea, golden-hour sky |
-| Flatlands | `src/game/maps/flatlands.ts` | Creative mode: instant mining and flying |
+| Flatlands | `src/game/maps/flatlands.ts` | Flat and open, suggested for creative |
 
-To add one, see [docs/ADDING_A_MAP.md](docs/ADDING_A_MAP.md).
+To add one, see [docs/ADDING_A_MAP.md](docs/ADDING_A_MAP.md). Planning for online play is in
+[docs/MULTIPLAYER.md](docs/MULTIPLAYER.md).
 
 ## Music
 
@@ -107,17 +150,18 @@ The game plays your own songs, shuffled. There are two ways to add them:
 
 ## Renaming the game
 
-Change `title` (and `collectWord`) in [`src/config/game.ts`](src/config/game.ts). The title screen,
-intro movie, sign in the sky and hidden letters all follow. Also update `<title>` in `index.html`
-and the names in `public/manifest.webmanifest`.
+Change `title` in [`src/config/game.ts`](src/config/game.ts): it's only shown on the title screen.
+Also update `<title>` in `index.html` and the names in `public/manifest.webmanifest`.
 
 ## Controls
 
-**Computer:** WASD move · mouse look · Space jump (double-tap to fly in Flatlands) · Shift sprint ·
-hold left click to mine · right click to build · 1–9 or wheel to pick blocks · V camera · Esc pause.
+**Computer:** WASD move · mouse look · Space jump (double-tap to fly in creative) · Shift sprint ·
+hold left click to mine · right click to build or eat · 1–9 or wheel to pick · E inventory ·
+T or / commands · Q drop (Ctrl+Q whole stack) · V camera · Esc pause.
 
 **Phone / tablet (landscape):** left thumb anywhere for the joystick (push to the edge to sprint) ·
-drag on the right to look · hold MINE · tap BUILD · JUMP (double-tap to fly in Flatlands) · CAM switches view.
+drag on the right to look · hold MINE · tap USE to build or eat · JUMP (double-tap to fly in creative) ·
+BAG inventory · CMD commands · CAM switches view.
 
 On Android the game goes fullscreen and locks to landscape when you press Play. iPhones don't
 allow websites to lock orientation, so the game view rotates itself while the phone is upright.

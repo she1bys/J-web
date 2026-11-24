@@ -2,7 +2,8 @@ import type { InputActions, InputState } from "./InputState";
 
 /**
  * Desktop controls: WASD to move, mouse to look (pointer lock), left button to mine,
- * right button to build, number keys / wheel for blocks.
+ * right button to use (build or eat), number keys / wheel for blocks, E inventory,
+ * T or / commands, Q drop.
  */
 export class KeyboardMouse {
   private keys = new Set<string>();
@@ -59,7 +60,7 @@ export class KeyboardMouse {
   private onMouseDown = (e: MouseEvent) => {
     if (!this.enabled || !this.locked) return;
     if (e.button === 0) this.state.mining = true;
-    if (e.button === 2) this.actions.place();
+    if (e.button === 2) this.actions.use();
   };
 
   private onMouseUp = (e: MouseEvent) => {
@@ -93,6 +94,17 @@ export class KeyboardMouse {
       this.actions.toggleCamera();
     }
     if (e.code === "KeyF") this.actions.toggleFly();
+    if (e.code === "KeyE") {
+      e.preventDefault();
+      this.keys.clear();
+      this.actions.openInventory();
+    }
+    if (e.code === "KeyT" || e.code === "Slash" || e.code === "Enter") {
+      e.preventDefault();
+      this.keys.clear();
+      this.actions.openCommands(e.code === "Slash" ? "/" : "");
+    }
+    if (e.code === "KeyQ") this.actions.dropItem(e.ctrlKey || e.metaKey);
     if (/^Digit[1-9]$/.test(e.code)) this.actions.selectSlot(Number(e.code.slice(5)) - 1);
     if (e.code === "Escape" || e.code === "KeyP") this.actions.pause();
     if (e.code === "Space") e.preventDefault();

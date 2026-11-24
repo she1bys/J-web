@@ -5,24 +5,37 @@ import { MusicPlayer } from "../core/MusicPlayer";
 import { addDeviceSongs, clearDeviceSongs } from "../core/songStore";
 import { isTouchDevice, prefersReducedMotion } from "../core/timeline";
 import { Viewport } from "../core/viewport";
-import { textToRows } from "../fonts/pixelFont";
 import { SunsetIntro } from "../cinematic/SunsetIntro";
 import { Particles } from "../title/Particles";
 import { PixelTrail } from "../title/PixelTrail";
 import { TitleScreen } from "../title/TitleScreen";
-import { Menu, button, text, title, type MenuItem } from "../ui/Menu";
-import { MAPS, getMap, type MapDefinition } from "../game/maps";
-import { loadMapSave, clearMapSave } from "../game/world/WorldStore";
+import { Menu, button, input, text, title, type MenuItem } from "../ui/Menu";
+import { MAPS, getMap } from "../game/maps";
+import { MODE_NAMES, type GameMode } from "../game/modes";
+import {
+  createWorld, deleteWorld, listWorlds, migrateLegacySaves, seedFromText, type WorldMeta,
+} from "../game/world/WorldStore";
 import type { Game } from "../game/Game";
 
-type Screen = "main" | "maps" | "settings" | "music" | "howto" | "credits" | "pause" | "confirm-reset";
+type Screen = "main" | "worlds" | "world" | "create" | "confirm-delete" | "settings" | "music" | "howto" | "credits" | "pause";
+
+/** "just now", "5 min ago", "3 days ago" */
+const ago = (t: number): string => {
+  const m = Math.floor((Date.now() - t) / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return `${m} min ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} h ago`;
+  const d = Math.floor(h / 24);
+  return d === 1 ? "yesterday" : `${d} days ago`;
+};
 
 const escapeHtml = (s: string) =>
   s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
 /**
  * The whole app as a small state machine:
- * title → menu → (map select) → break the name → intro movie → game ⇄ pause menu.
+ * title → menu → worlds (load or create) → break the name → intro movie → game ⇄ pause menu.
  */
 export class App {
   private settings: Settings = loadSettings();
@@ -31,7 +44,6 @@ export class App {
   private songPicker: HTMLInputElement;
   private readonly touch = isTouchDevice();
   private readonly reduce = prefersReducedMotion();
-  private readonly titleRows = textToRows(GAME.title);
 
   private title: TitleScreen;
   private particles: Particles;
@@ -52,7 +64,10 @@ export class App {
   private menuOpen = false;
   private busy = true;
   private game: Game | null = null;
-  private currentMap: MapDefinition | null = null;
+  /** World picked on the worlds screen. */
+  private selected: WorldMeta | null = null;
+  /** The "New world" form. */
+  private draft: { name: string; map: number; mode: GameMode; seed: string } = { name: "", map: 0, mode: "survival", seed: "" };
 
   constructor(root: HTMLElement) {
     root.innerHTML = `
@@ -98,6 +113,7 @@ export class App {
       if (this.stack[this.stack.length - 1] === "music") this.render(false, this.menu.focusedIndex());
     };
     void this.music.load();
+    migrateLegacySaves(MAPS);
     this.bindGlobalEvents();
     void this.start();
   }
@@ -150,6 +166,7 @@ export class App {
   }
 
   private onKey(e: KeyboardEvent): void {
+    if ((e.target as HTMLElement).closest?.("input")) return; // typing a world name or seed
     const inGame = !!this.game;
     if (inGame && this.pauseEl.hidden) return; // the game handles its own keys
     if (!this.menuOpen && !inGame) {
@@ -195,20 +212,71 @@ export class App {
     };
     return {
       main: () => [
-        button("Play", () => this.go("maps")),
+        button("Play", () => this.go("worlds")),
         button("How to play", () => this.go("howto")),
         button("Settings", () => this.go("settings")),
         button("Credits", () => this.go("credits")),
       ],
-      maps: () => [
-        title("Choose a map"),
-        ...MAPS.map(m => {
-          const found = loadMapSave(m.id)?.letters.length ?? 0;
-          const letters = `${found}/${GAME.collectWord.length} letters`;
-          return button(m.name, () => this.play(m), { detail: `${m.description} · ${letters}` });
+      worlds: () => {
+        const worlds = listWorlds();
+        return [
+          title("Worlds"),
+          button("Create new world", () => this.newWorld()),
+          ...worlds.map(w =>
+            button(w.name, () => {
+              this.selected = w;
+              this.go("world");
+            }, { detail: `${getMap(w.mapId).name} · ${MODE_NAMES[w.mode]} · ${ago(w.lastPlayed)}` }),
+          ),
+          ...(worlds.length ? [] : [text("No saved worlds yet")]),
+          button("Back", () => this.back()),
+        ];
+      },
+      world: () => {
+        const w = this.selected;
+        if (!w) return [button("Back", () => this.back())];
+        return [
+          title(w.name),
+          text(`${escapeHtml(getMap(w.mapId).name)} · ${MODE_NAMES[w.mode]}<br>Seed ${w.seed}`),
+          button("Play", () => void this.play(w)),
+          button("Delete world", () => this.go("confirm-delete")),
+          button("Back", () => this.back()),
+        ];
+      },
+      "confirm-delete": () => [
+        title("Delete world?"),
+        text(`"${escapeHtml(this.selected?.name ?? "")}" and everything<br>built in it will be gone for good.`),
+        button("Yes, delete it", () => {
+          if (this.selected) deleteWorld(this.selected.id);
+          this.selected = null;
+          this.stack = ["main", "worlds"];
+          this.render();
         }),
-        button("Back", () => this.back()),
+        button("No", () => this.back()),
       ],
+      create: () => {
+        const d = this.draft;
+        const map = MAPS[d.map];
+        const cycleMap = (dir: number) => {
+          d.map = (d.map + dir + MAPS.length) % MAPS.length;
+          this.render(false, this.menu.focusedIndex());
+        };
+        return [
+          title("New world"),
+          input("Name", d.name, v => (d.name = v), { placeholder: "New world" }),
+          button(`Map: ${map.name}`, () => cycleMap(1), { detail: map.description, onAdjust: cycleMap }),
+          button(`Mode: ${MODE_NAMES[d.mode]}`, () => {
+            d.mode = d.mode === "survival" ? "creative" : "survival";
+            this.render(false, this.menu.focusedIndex());
+          }, { detail: d.mode === "survival" ? "Health, hunger · gather and craft" : "Every block · fly · can't get hurt" }),
+          input("Seed", d.seed, v => (d.seed = v), { placeholder: "Random", maxLength: 24 }),
+          button("Create world", () => {
+            const w = createWorld({ name: d.name, mapId: map.id, mode: d.mode, seed: seedFromText(d.seed) });
+            void this.play(w);
+          }),
+          button("Back", () => this.back()),
+        ];
+      },
       settings: () => [
         title("Settings"),
         button("Music", () => this.go("music")),
@@ -254,8 +322,8 @@ export class App {
         title("How to play"),
         text(
           this.touch
-            ? "Left thumb: move · push up to sprint<br>Right side: drag to look<br>Hold MINE · tap BUILD · JUMP<br>Find the 5 pink letters!"
-            : "WASD move · Mouse look<br>Space jump · Shift sprint<br>Hold left click: mine<br>Right click: build<br>1-9 blocks · V camera<br>Find the 5 pink letters!",
+            ? "Left thumb: move · push up to sprint<br>Right side: drag to look<br>Hold MINE · tap USE to build or eat<br>BAG: inventory and crafting<br>CMD: commands like /give"
+            : "WASD move · Mouse look<br>Space jump · Shift sprint<br>Hold left click: mine<br>Right click: build or eat<br>E: inventory and crafting<br>T or /: commands · Q: drop<br>1-9 blocks · V camera",
         ),
         button("Back", () => this.back()),
       ],
@@ -265,14 +333,7 @@ export class App {
         button("Resume", () => this.resumeGame()),
         button("Settings", () => this.go("settings")),
         button("How to play", () => this.go("howto")),
-        button("Restart map", () => this.go("confirm-reset")),
-        button("Main menu", () => this.toMainMenu()),
-      ],
-      "confirm-reset": () => [
-        title("Restart map?"),
-        text("Your building and letters<br>on this map will be erased."),
-        button("Yes, restart", () => this.resetMap()),
-        button("No", () => this.back()),
+        button("Save and quit", () => this.toMainMenu()),
       ],
     };
   }
@@ -333,6 +394,7 @@ export class App {
     const before = this.nameEl.getBoundingClientRect().top;
     this.hintEl.hidden = true;
     this.menuEl.hidden = false;
+    this.menuEl.parentElement?.classList.add("menu-open");
     this.stack = ["main"];
     this.render();
     const shift = before - this.nameEl.getBoundingClientRect().top;
@@ -344,7 +406,14 @@ export class App {
 
   /* ---------- Playing ---------- */
 
-  private async play(map: MapDefinition): Promise<void> {
+  private newWorld(): void {
+    const n = listWorlds().length + 1;
+    const map = this.draft.map;
+    this.draft = { name: `World ${n}`, map, mode: MAPS[map].defaultMode ?? "survival", seed: "" };
+    this.go("create");
+  }
+
+  private async play(world: WorldMeta): Promise<void> {
     if (this.busy) return;
     this.busy = true;
     // Ask for fullscreen landscape now, while we still have the tap.
@@ -353,10 +422,10 @@ export class App {
     const loading = import("../game/Game");
     const r = this.nameEl.getBoundingClientRect();
     await this.title.mine(r.left + r.width / 2, r.top + r.height / 2);
-    if (this.settings.intro && !this.reduce) await this.intro.play(this.titleRows);
+    if (this.settings.intro && !this.reduce) await this.intro.play();
     try {
       const { Game } = await loading;
-      this.startGame(Game, map);
+      this.startGame(Game, world);
     } catch {
       this.busy = false;
       this.menuEl.hidden = false;
@@ -367,20 +436,17 @@ export class App {
     }
   }
 
-  private startGame(GameClass: typeof Game, map: MapDefinition): void {
-    this.currentMap = map;
+  private startGame(GameClass: typeof Game, world: WorldMeta): void {
     this.playLayer.hidden = false;
     this.viewport.setActive(true);
     this.game = new GameClass({
       container: this.gameEl,
       viewport: this.viewport,
       settings: this.settings,
-      map,
+      world,
       sfx: this.sfx,
-      titleRows: this.titleRows,
-      word: GAME.collectWord,
       onPause: () => this.showPause(),
-      onAllLettersFound: () => void this.celebrate(),
+      onExitToMenu: () => void this.toMainMenu(),
     });
     this.busy = false;
     this.game.resume();
@@ -398,16 +464,6 @@ export class App {
     this.game?.resume();
   }
 
-  private async resetMap(): Promise<void> {
-    const map = this.currentMap ?? getMap("meadow");
-    clearMapSave(map.id);
-    this.game?.dispose();
-    this.game = null;
-    this.pauseEl.hidden = true;
-    const { Game } = await import("../game/Game");
-    this.startGame(Game, map);
-  }
-
   private async toMainMenu(): Promise<void> {
     this.game?.dispose();
     this.game = null;
@@ -421,15 +477,5 @@ export class App {
     this.render();
     await this.title.rebuild();
     this.busy = false;
-  }
-
-  /** All letters found: play the sunset movie as an ending, then carry on playing. */
-  private async celebrate(): Promise<void> {
-    if (!this.game) return;
-    this.game.pause(false);
-    this.sfx.fanfare();
-    await this.intro.play(this.titleRows);
-    this.game.resume();
-    this.game.toast(`You found ${GAME.collectWord}!`);
   }
 }

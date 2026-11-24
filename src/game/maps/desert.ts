@@ -1,8 +1,8 @@
 import { fbm2 } from "../../core/noise";
 import { Block } from "../world/blocks";
 import type { MapDefinition } from "./types";
-import { bitmapSign, cactus, palmTree, pyramid } from "./shared/structures";
-import { pickLetterSpots } from "./shared/letters";
+import { cactus, palmTree, pyramid } from "./shared/structures";
+import { findDrySpawn } from "./shared/spawn";
 
 /** Sand dunes, cacti, a palm oasis and a stepped pyramid. */
 export const desert: MapDefinition = {
@@ -16,7 +16,7 @@ export const desert: MapDefinition = {
   hotbar: [Block.Sand, Block.Sandstone, Block.Cactus, Block.PalmWood, Block.Planks, Block.Glass, Block.Brick, Block.Lantern, Block.Rose],
   startTime: 0.18,
 
-  generate(w, { rng, titleRows, letterCount }) {
+  generate(w, { seed, rng }) {
     const spawn = { x: 48, z: 80 };
     const oasis = { x: 70, z: 40, r: 8 };
     const pyr = { x: 28, z: 34, half: 9 };
@@ -25,7 +25,7 @@ export const desert: MapDefinition = {
     for (let z = 0; z < w.sz; z++) {
       for (let x = 0; x < w.sx; x++) {
         // Long smooth dunes, flattened near the oasis and the pyramid.
-        let h = 9 + fbm2(x / 30, z / 18, 7, 3) * 8;
+        let h = 9 + fbm2(x / 30, z / 18, seed + 5, 3) * 8;
         const dOasis = Math.hypot(x - oasis.x, z - oasis.z);
         if (dOasis < oasis.r + 6) {
           const f = Math.max(0, (dOasis - oasis.r) / 6);
@@ -60,12 +60,9 @@ export const desert: MapDefinition = {
       }
     }
 
-    const width = titleRows[0].length;
-    bitmapSign(w, titleRows, Math.floor((w.sx - width) / 2), 30, 12, Block.Rose);
-
+    const start = findDrySpawn(w, spawn.x, spawn.z);
     return {
-      spawn: { x: spawn.x + 0.5, y: w.surfaceY(spawn.x, spawn.z) + 1, z: spawn.z + 0.5, yaw: 0 },
-      letterSpots: pickLetterSpots(w, rng, letterCount, spawn, { minApart: 14 }),
+      spawn: { ...start, yaw: 0 },
     };
   },
 };

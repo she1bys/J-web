@@ -1,4 +1,5 @@
 import type { Rng } from "../../core/random";
+import type { GameMode } from "../modes";
 import type { BlockId } from "../world/blocks";
 import type { World } from "../world/World";
 
@@ -19,6 +20,7 @@ export interface MapDefinition {
   name: string;
   description: string;
   size: { x: number; y: number; z: number };
+  /** Seed used for worlds made before seeds could be chosen. */
   seed: number;
   sky: SkyPalette;
   /** Fog start and end distance. */
@@ -27,22 +29,18 @@ export interface MapDefinition {
   hotbar: BlockId[];
   /** Time of day to start at: 0 sunrise, 0.25 noon, 0.5 sunset, 0.75 midnight. */
   startTime: number;
-  /** Creative maps let you fly (double-tap jump). */
-  allowFlight?: boolean;
-  /** Fill the world with blocks and say where to start and where the letters are hidden. */
+  /** Mode suggested when creating a world on this map. */
+  defaultMode?: GameMode;
+  /** Fill the world with blocks and say where the player starts. */
   generate(world: World, ctx: GenerateContext): MapLayout;
 }
 
 export interface GenerateContext {
+  /** The world's seed. Use it (plus offsets) for every noise call so each seed is different. */
+  seed: number;
   rng: Rng;
-  /** Bitmap of the game title, for signs in the world. */
-  titleRows: string[];
-  /** How many letters to hide. */
-  letterCount: number;
 }
 
 export interface MapLayout {
   spawn: Vec3 & { yaw: number };
-  /** Where each hidden letter floats, in order. */
-  letterSpots: Vec3[];
 }

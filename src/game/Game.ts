@@ -1,25 +1,40 @@
 import * as THREE from "three";
 import type { Settings, CameraMode } from "../config/settings";
 import type { Sfx } from "../core/audio";
-import { createRng } from "../core/random";
+import { createRng, type Rng } from "../core/random";
 import type { Viewport } from "../core/viewport";
 import { isTouchDevice } from "../core/timeline";
-import type { MapDefinition, Vec3 } from "./maps/types";
+import { getMap, type MapDefinition, type Vec3 } from "./maps";
+import { MODE_NAMES, MODE_RULES, type GameMode, type ModeRules } from "./modes";
 import { World } from "./world/World";
 import { Block, blockDef } from "./world/blocks";
 import { ChunkRenderer } from "./world/ChunkRenderer";
 import { raycast, type RayHit } from "./world/raycast";
-import { loadMapSave, saveMapSave } from "./world/WorldStore";
+import {
+  DEFAULT_RULES, loadWorld, saveWorld, updateWorldMeta,
+  type WorldMeta, type WorldRules,
+} from "./world/WorldStore";
 import { paintAtlas, tileAverage } from "./textures/atlas";
 import { Player } from "./player/Player";
 import { CameraRig } from "./player/CameraRig";
 import { Character } from "./player/Character";
+import { HeldItem } from "./player/HeldItem";
 import { Sky } from "./effects/Sky";
 import { Clouds } from "./effects/Clouds";
 import { Debris } from "./effects/Debris";
 import { BlockSelection } from "./effects/BlockSelection";
-import { Letters } from "./collectibles/Letters";
+import { ItemEntities } from "./entities/ItemEntities";
+import { Inventory, type ItemStack } from "./items/Inventory";
+import { itemDef } from "./items/items";
+import { blockDrops, miningInfo } from "./items/drops";
+import { Vitals } from "./survival/Vitals";
+import { createCommands } from "./commands/builtin";
+import type { CommandContext } from "./commands/types";
+import type { CommandRegistry } from "./commands/registry";
 import { Hud } from "./hud/Hud";
+import { InventoryScreen } from "./hud/InventoryScreen";
+import { CommandBar } from "./hud/CommandBar";
+import { DeathScreen } from "./hud/DeathScreen";
 import { emptyInput, type InputActions } from "./input/InputState";
 import { KeyboardMouse } from "./input/KeyboardMouse";
 import { TouchControls } from "./input/TouchControls";
@@ -33,27 +48,29 @@ export interface GameOptions {
   container: HTMLElement;
   viewport: Viewport;
   settings: Settings;
-  map: MapDefinition;
+  /** The saved world to play. */
+  world: WorldMeta;
   sfx: Sfx;
-  /** Bitmap of the title, for signs in the world. */
-  titleRows: string[];
-  /** The word whose letters are hidden in the map. */
-  word: string;
   /** The player asked to pause (button, Esc, or the mouse was released). */
   onPause: () => void;
-  onAllLettersFound: () => void;
+  /** "Main menu" from the death screen. */
+  onExitToMenu: () => void;
 }
 
 /**
- * A playable map: owns the world, rendering, player, controls and HUD,
- * and runs the frame loop while not paused.
+ * A playable world: owns the blocks, rendering, player, inventory, survival stats,
+ * dropped items, commands, controls and HUD, and runs the frame loop while not paused.
  */
 export class Game {
   private readonly opts: GameOptions;
+  private readonly meta: WorldMeta;
   private readonly map: MapDefinition;
   private readonly touch = isTouchDevice();
+  private readonly rng: Rng;
   private settings: Settings;
   private camMode: CameraMode;
+  private mode: GameMode;
+  private rules: WorldRules;
 
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
@@ -67,19 +84,26 @@ export class Game {
   private player: Player;
   private rig: CameraRig;
   private character = new Character();
+  private held: HeldItem;
   private sky: Sky;
   private clouds: Clouds;
   private debris: Debris;
   private selection: BlockSelection;
-  private letters: Letters;
+  private items: ItemEntities;
+
+  private inventory = new Inventory();
+  private vitals = new Vitals();
+  private commands: CommandRegistry = createCommands();
+
   private hud: Hud;
+  private invScreen: InventoryScreen;
+  private cmdBar: CommandBar;
+  private death: DeathScreen;
   private input = emptyInput();
   private kbm: KeyboardMouse | null = null;
   private touchControls: TouchControls | null = null;
 
   private spawn: Vec3 & { yaw: number };
-  private letterSpots: Vec3[];
-  private found: Set<number>;
   private time: number;
   private slot = 0;
   private target: RayHit | null = null;
@@ -93,29 +117,31 @@ export class Game {
   private disposed = false;
   private lastT = 0;
   private colors = new Map<number, [number, number, number]>();
-  private unsubscribeViewport: () => void;
+  private unsubscribers: (() => void)[] = [];
 
   constructor(opts: GameOptions) {
     this.opts = opts;
-    this.map = opts.map;
+    this.meta = opts.world;
+    this.map = getMap(this.meta.mapId);
     this.settings = { ...opts.settings };
     this.camMode = this.settings.camera;
+    this.rng = createRng(this.meta.seed ^ 0x5bd1e995);
 
-    // World: generate the map, then re-apply anything the player changed last time.
+    // World: generate from the seed, then re-apply everything the player changed.
     const { size } = this.map;
     this.world = new World(size.x, size.y, size.z);
-    const layout = this.map.generate(this.world, {
-      rng: createRng(this.map.seed),
-      titleRows: opts.titleRows,
-      letterCount: opts.word.length,
-    });
-    this.spawn = layout.spawn;
-    this.letterSpots = layout.letterSpots;
-    const save = loadMapSave(this.map.id);
+    const layout = this.map.generate(this.world, { seed: this.meta.seed, rng: createRng(this.meta.seed) });
+    const save = loadWorld(this.meta.id);
     if (save) this.world.applyEdits(save.edits);
     this.world.recording = true;
-    this.found = new Set(save?.letters ?? []);
+    this.spawn = save?.spawn ? { ...save.spawn, yaw: layout.spawn.yaw } : layout.spawn;
     this.time = save?.time ?? this.map.startTime;
+    this.mode = save?.mode ?? this.meta.mode;
+    this.rules = { ...DEFAULT_RULES, ...save?.rules };
+    if (save?.inventory) this.inventory.load(save.inventory);
+    else if (this.mode === "creative") this.map.hotbar.forEach((id, i) => this.inventory.set(i, { id, count: 1 }));
+    if (save?.vitals) Object.assign(this.vitals, save.vitals);
+    this.slot = save?.selectedSlot ?? 0;
 
     // Rendering
     this.canvas = document.createElement("canvas");
@@ -131,10 +157,12 @@ export class Game {
     this.chunks = new ChunkRenderer(this.world, this.texture, this.scene);
     this.chunks.buildAll();
     this.sky = new Sky(this.scene, this.map.sky, this.map.fog);
-    this.clouds = new Clouds(this.scene, size.x, size.z, size.y + 2, this.map.seed);
+    this.clouds = new Clouds(this.scene, size.x, size.z, size.y + 2, this.meta.seed);
     this.debris = new Debris(this.scene, this.world);
     this.selection = new BlockSelection(this.scene, this.texture);
-    this.letters = new Letters(this.scene, opts.word, this.letterSpots, this.found);
+    this.items = new ItemEntities(this.scene, this.world, this.texture);
+    this.scene.add(this.camera); // so the held item (a child of the camera) renders
+    this.held = new HeldItem(this.camera, this.texture);
 
     // Player
     this.player = new Player(this.world);
@@ -142,35 +170,68 @@ export class Game {
     this.player.pos.set(sp?.x ?? this.spawn.x, sp?.y ?? this.spawn.y, sp?.z ?? this.spawn.z);
     this.player.yaw = sp?.yaw ?? this.spawn.yaw;
     this.player.pitch = sp?.pitch ?? 0.12;
-    if (this.player.collides()) this.respawn();
+    this.player.flying = !!sp?.flying && this.rulesNow.flight;
+    if (this.player.collides()) this.respawnAt(this.spawn);
+    this.player.resetFall();
     this.rig = new CameraRig(this.camera, this.world);
     this.scene.add(this.character.root);
 
-    // Controls and HUD
+    // Controls and screens
     const actions: InputActions = {
-      place: () => this.place(),
-      toggleCamera: () => { this.camMode = this.camMode === "first" ? "third" : "first"; },
-      toggleFly: () => this.toggleFly(),
+      use: () => this.use(),
+      toggleCamera: () => {
+        this.camMode = this.camMode === "first" ? "third" : "first";
+      },
+      toggleFly: () => this.setFlying(!this.player.flying),
       selectSlot: n => this.select(n),
       cycleSlot: d => this.select(this.slot + d),
       pause: () => this.pause(),
+      openInventory: () => this.openInventory(),
+      openCommands: prefill => this.openCommands(prefill),
+      dropItem: all => this.dropHeld(all),
     };
-    this.hud = new Hud(opts.container, this.atlas, this.map.hotbar, opts.word, this.touch, () => this.pause(), n => this.select(n));
+    this.hud = new Hud(opts.container, this.touch, () => this.pause(), n => this.select(n));
     if (this.touch) {
-      this.touchControls = new TouchControls(opts.container, this.canvas, this.input, actions, opts.viewport, !!this.map.allowFlight);
+      this.touchControls = new TouchControls(opts.container, this.canvas, this.input, actions, opts.viewport, this.rulesNow.flight);
     } else {
       this.kbm = new KeyboardMouse(this.canvas, this.input, actions, locked => {
-        this.hud.showHint(!locked && !this.paused);
-        if (!locked && !this.paused) this.pause();
+        this.hud.showHint(!locked && !this.paused && !this.uiOpen);
+        // Losing the mouse while playing (Esc, alt-tab) pauses; opening a screen doesn't.
+        if (!locked && !this.paused && !this.uiOpen) this.pause();
       });
     }
-    this.hud.setLetters(this.found);
-    this.hud.setFpsVisible(this.settings.showFps);
-    this.select(0);
+    this.invScreen = new InventoryScreen(
+      opts.container,
+      this.inventory,
+      () => this.closeUi(),
+      stack => this.throwStack(stack),
+      kind => (kind === "craft" ? opts.sfx.collect() : opts.sfx.click()),
+    );
+    this.cmdBar = new CommandBar(
+      opts.container,
+      line => this.runCommand(line),
+      line => this.commands.complete(line, this.commandContext),
+      () => this.closeUi(),
+    );
+    this.death = new DeathScreen(opts.container, () => this.respawn(), () => opts.onExitToMenu());
 
-    this.unsubscribeViewport = opts.viewport.onChange(this.resize);
+    this.unsubscribers.push(this.inventory.onChange(() => this.refreshHotbar()));
+    this.hud.setFpsVisible(this.settings.showFps);
+    this.applyMode();
+    this.select(this.slot);
+
+    this.unsubscribers.push(opts.viewport.onChange(this.resize));
     addEventListener("resize", this.resize);
     this.resize();
+    if (!save) this.cmdBar.log(`${this.meta.name}: ${MODE_NAMES[this.mode]} mode. Type /help for commands.`, "info");
+  }
+
+  private get rulesNow(): ModeRules {
+    return MODE_RULES[this.mode];
+  }
+
+  private get uiOpen(): boolean {
+    return this.invScreen.isOpen || this.cmdBar.isOpen || this.death.isOpen;
   }
 
   /* ---------- Lifecycle ---------- */
@@ -178,13 +239,12 @@ export class Game {
   resume(): void {
     if (!this.paused || this.disposed) return;
     this.paused = false;
-    if (this.kbm) {
-      this.kbm.enabled = true;
+    this.setControlsEnabled(!this.uiOpen);
+    if (this.kbm && !this.uiOpen) {
       this.hud.showHint(true);
       this.kbm.requestLock();
     }
     if (this.touchControls) {
-      this.touchControls.enabled = true;
       this.hud.showHint(true);
       setTimeout(() => this.hud.showHint(false), 4500);
     }
@@ -196,15 +256,10 @@ export class Game {
   pause(notify = true): void {
     if (this.paused) return;
     this.paused = true;
-    if (this.kbm) {
-      this.kbm.enabled = false;
-      this.kbm.reset();
-      this.kbm.releaseLock();
-    }
-    if (this.touchControls) {
-      this.touchControls.enabled = false;
-      this.touchControls.reset();
-    }
+    if (this.invScreen.isOpen) this.invScreen.close();
+    if (this.cmdBar.isOpen) this.cmdBar.close();
+    this.setControlsEnabled(false);
+    this.kbm?.releaseLock();
     this.hud.showHint(false);
     this.save();
     if (notify) this.opts.onPause();
@@ -215,7 +270,6 @@ export class Game {
     this.settings = { ...s };
     if (cameraChanged) this.camMode = s.camera;
     this.hud.setFpsVisible(s.showFps);
-    if (!s.dayCycle) this.time = this.map.startTime;
     this.resize();
   }
 
@@ -228,20 +282,63 @@ export class Game {
     this.pause(false);
     this.disposed = true;
     removeEventListener("resize", this.resize);
-    this.unsubscribeViewport();
+    this.unsubscribers.forEach(u => u());
     this.kbm?.dispose();
     this.touchControls?.dispose();
     this.hud.dispose();
+    this.invScreen.dispose();
+    this.cmdBar.dispose();
+    this.death.dispose();
     this.chunks.dispose();
     this.sky.dispose();
     this.clouds.dispose();
     this.debris.dispose();
     this.selection.dispose();
-    this.letters.dispose();
+    this.items.dispose();
+    this.held.dispose();
     this.character.dispose();
     this.texture.dispose();
     this.renderer.dispose();
     this.canvas.remove();
+  }
+
+  private setControlsEnabled(on: boolean): void {
+    if (this.kbm) {
+      this.kbm.enabled = on;
+      if (!on) this.kbm.reset();
+    }
+    if (this.touchControls) {
+      this.touchControls.enabled = on;
+      if (!on) this.touchControls.reset();
+    }
+  }
+
+  /* ---------- Screens ---------- */
+
+  private openInventory(): void {
+    if (this.paused || this.uiOpen) return;
+    this.setControlsEnabled(false);
+    this.kbm?.releaseLock();
+    this.hud.showHint(false);
+    this.invScreen.open(this.mode);
+  }
+
+  private openCommands(prefill: string): void {
+    if (this.paused || this.uiOpen) return;
+    this.setControlsEnabled(false);
+    this.kbm?.releaseLock();
+    this.hud.showHint(false);
+    this.cmdBar.open(prefill);
+  }
+
+  private closeUi(): void {
+    if (this.paused || this.uiOpen) return;
+    this.setControlsEnabled(true);
+    if (this.kbm) {
+      this.kbm.requestLock();
+      // If the browser refuses the mouse capture, "click to play" explains what to do.
+      setTimeout(() => this.hud.showHint(!this.kbm?.locked && !this.paused && !this.uiOpen), 150);
+    }
   }
 
   /* ---------- Frame loop ---------- */
@@ -257,6 +354,8 @@ export class Game {
 
   private update(dt: number): void {
     const { player, input, settings } = this;
+    const alive = !this.death.isOpen;
+    const sfx = this.opts.sfx;
 
     // Look
     const sens = (0.0008 + settings.look * 0.00045) * (this.touch ? 2.4 : 1);
@@ -266,10 +365,9 @@ export class Game {
     input.lookX = input.lookY = 0;
 
     // Move
-    const ev = player.update(dt, {
-      x: input.moveX, z: input.moveZ, jump: input.jump, sprint: input.sprint, descend: input.descend,
-    }, this.touch);
-    const sfx = this.opts.sfx;
+    const ev = player.update(dt, alive ? {
+      x: input.moveX, z: input.moveZ, jump: input.jump, sprint: input.sprint && this.vitals.hunger > 6, descend: input.descend,
+    } : { x: 0, z: 0, jump: false, sprint: false, descend: false }, this.touch);
     if (ev.step !== null) {
       const d = blockDef(ev.step);
       if (d) sfx.step(d.sound);
@@ -279,35 +377,102 @@ export class Game {
       if (d) sfx.place(d.sound);
     }
     if (ev.splashed) sfx.splash();
-    if (player.pos.y < -10) this.respawn();
 
-    // Camera and character
+    // Survival: fall damage, hunger, air
+    if (this.rulesNow.vitals && alive) {
+      let hurt = ev.fell > 3 ? this.vitals.fall(ev.fell) : 0;
+      if (ev.jumped) this.vitals.exert(0.6);
+      const eye = player.eye;
+      hurt += this.vitals.update(dt, {
+        sprinting: player.sprinting,
+        moving: player.speed > 0.5,
+        submerged: this.world.isWater(Math.floor(eye.x), Math.floor(eye.y), Math.floor(eye.z)),
+      });
+      if (hurt > 0) {
+        this.hud.flashHurt();
+        sfx.hit("dirt");
+        navigator.vibrate?.(30);
+      }
+      if (this.vitals.dead) this.die();
+    }
+    if (player.pos.y < -10) {
+      if (this.rulesNow.vitals && alive) {
+        this.vitals.damage(999, "void");
+        this.die();
+      } else if (!this.rulesNow.vitals) this.respawnAt(this.spawn);
+    }
+    this.hud.setVitals(this.vitals.health, this.vitals.hunger, this.vitals.air);
+
+    // Camera, character and the item in hand
     this.rig.update(player, this.camMode, dt);
     this.character.root.visible = this.camMode === "third";
     this.character.root.position.copy(player.pos);
     this.character.root.rotation.y = player.yaw;
     this.character.animate(dt, player.speed, player.inWater || player.flying);
+    this.held.visible = this.camMode === "first" && alive;
 
     // Sky and lighting
-    if (settings.dayCycle) this.time = (this.time + dt / DAY_SECONDS) % 1;
+    if (settings.dayCycle && this.rules.dayCycle) this.time = (this.time + dt / DAY_SECONDS) % 1;
     this.sky.update(this.time, this.camera, this.rig.underwater());
-    this.chunks.setLight(this.sky.light);
-    this.clouds.update(dt, this.sky.light);
-    this.debris.update(dt, this.sky.light);
+    const light = this.sky.light;
+    this.chunks.setLight(light);
+    this.clouds.update(dt, light);
+    this.debris.update(dt, light);
+    this.held.update(dt, player.onGround ? player.speed : 0, light);
 
-    this.updateTarget();
-    this.updateMining(dt);
+    // Dropped items fly into the inventory when you walk over them
+    this.items.update(dt, player.pos, light, stack => {
+      if (!alive) return stack.count;
+      const left = this.inventory.add(stack.id, stack.count, stack.dur);
+      if (left < stack.count) {
+        sfx.click();
+        this.dirty = true;
+      }
+      return left;
+    });
 
-    // Hidden letters
-    const got = this.letters.update(dt, player.pos);
-    if (got >= 0) this.collect(got);
+    if (alive) {
+      this.updateTarget();
+      this.updateMining(dt);
+    } else this.selection.hide();
 
     this.hud.tickFps(dt);
     this.saveTimer += dt;
     if (this.dirty && this.saveTimer > 8) this.save();
   }
 
+  /* ---------- Mode ---------- */
+
+  private applyMode(): void {
+    const rules = this.rulesNow;
+    if (!rules.flight && this.player.flying) this.setFlying(false);
+    this.touchControls?.setFlightAllowed(rules.flight);
+    this.hud.setVitalsVisible(rules.vitals);
+    if (!rules.vitals) this.vitals.reset();
+    this.refreshHotbar();
+  }
+
+  private setMode(mode: GameMode): void {
+    this.mode = mode;
+    this.applyMode();
+    this.dirty = true;
+  }
+
+  private setFlying(on: boolean): boolean {
+    if (on && !this.rulesNow.flight) return false;
+    this.player.flying = on;
+    this.player.vel.y = 0;
+    this.player.resetFall();
+    this.hud.setFlying(on);
+    this.touchControls?.setFlying(on);
+    return on;
+  }
+
   /* ---------- Blocks ---------- */
+
+  private get heldStack(): ItemStack | null {
+    return this.inventory.get(this.slot);
+  }
 
   private updateTarget(): void {
     const dir = new THREE.Vector3();
@@ -336,21 +501,30 @@ export class Game {
       this.mineProgress = 0;
       this.hitTimer = 0;
     }
-    const def = blockDef(this.world.get(t.x, t.y, t.z));
+    const id = this.world.get(t.x, t.y, t.z);
+    const def = blockDef(id);
     if (!def) return;
-    const creative = !!this.map.allowFlight;
-    this.mineProgress += creative || def.hardness <= 0 ? 1 : dt / def.hardness;
+    const tool = this.heldStack ? itemDef(this.heldStack.id)?.tool : undefined;
+    const info = miningInfo(id, tool);
+    const instant = this.rulesNow.instantMine;
+    this.mineProgress += instant || info.seconds <= 0 ? 1 : dt / info.seconds;
     this.hitTimer -= dt;
-    if (this.hitTimer <= 0 && !creative) {
+    if (this.hitTimer <= 0 && !instant) {
       this.opts.sfx.hit(def.sound);
-      this.hitTimer = 0.22;
+      this.held.swing();
+      this.hitTimer = 0.25;
     }
     this.selection.show(t.x, t.y, t.z, this.mineProgress);
     if (this.mineProgress >= 1) {
-      this.breakBlock(t);
+      this.breakBlock(t, info.drops);
+      if (tool && !instant && this.inventory.wear(this.slot)) {
+        this.opts.sfx.breakBlock("wood");
+        this.hud.toast("Your tool broke");
+      }
+      if (this.rulesNow.vitals) this.vitals.exert(0.3);
       this.mineProgress = 0;
       this.mineKey = "";
-      this.mineCooldown = creative ? 0.2 : 0.05;
+      this.mineCooldown = instant ? 0.2 : 0.05;
     }
   }
 
@@ -363,67 +537,190 @@ export class Game {
     return c;
   }
 
-  private breakBlock(t: RayHit): void {
+  /** Change blocks and refresh the meshes around them. Every world edit goes through here. */
+  private editBlocks(cells: Iterable<[number, number, number, number]>): number {
+    let n = 0;
+    for (const [x, y, z, id] of cells) {
+      if (!this.world.inBounds(x, y, z) || this.world.get(x, y, z) === id) continue;
+      this.world.set(x, y, z, id);
+      this.chunks.markDirty(x, z);
+      n++;
+    }
+    if (n) {
+      this.chunks.flush();
+      this.dirty = true;
+    }
+    return n;
+  }
+
+  private breakBlock(t: RayHit, drops: boolean): void {
     const id = this.world.get(t.x, t.y, t.z);
     const def = blockDef(id);
     // Water next to the hole flows into it.
     const w = this.world;
     const wet = w.isWater(t.x, t.y + 1, t.z) || w.isWater(t.x + 1, t.y, t.z) || w.isWater(t.x - 1, t.y, t.z) ||
       w.isWater(t.x, t.y, t.z + 1) || w.isWater(t.x, t.y, t.z - 1);
-    w.set(t.x, t.y, t.z, wet ? Block.Water : Block.Air);
-    this.chunks.markDirty(t.x, t.z);
-    this.chunks.flush();
+    this.editBlocks([[t.x, t.y, t.z, wet ? Block.Water : Block.Air]]);
     this.debris.burst(t.x, t.y, t.z, this.colorOf(id));
     if (def) this.opts.sfx.breakBlock(def.sound);
     navigator.vibrate?.(12);
-    this.dirty = true;
+    if (drops && this.rulesNow.drops) {
+      for (const d of blockDrops(id, this.rng)) this.items.spawn(d, t.x + 0.5, t.y + 0.5, t.z + 0.5);
+    }
   }
 
-  private place(): void {
+  /** Place the held block, or eat the held food. */
+  private use(): void {
+    if (this.paused || this.death.isOpen) return;
+    const stack = this.heldStack;
+    const def = stack ? itemDef(stack.id) : undefined;
+    if (!stack || !def) return;
+
+    if (def.food !== undefined) {
+      if (!this.rulesNow.vitals) return;
+      if (this.vitals.eat(def.food)) {
+        this.inventory.takeOne(this.slot);
+        this.opts.sfx.collect();
+        this.held.swing();
+        this.dirty = true;
+      } else this.hud.toast("You're full");
+      return;
+    }
+    if (def.block === undefined) return;
+
     const t = this.target;
-    if (!t || this.paused) return;
+    if (!t) return;
     const { px, py, pz } = t;
-    const w = this.world;
-    if (!w.inBounds(px, py, pz)) return;
-    const here = w.get(px, py, pz);
+    if (!this.world.inBounds(px, py, pz)) return;
+    const here = this.world.get(px, py, pz);
     if (here !== Block.Air && here !== Block.Water) return;
-    if (this.player.overlapsBlock(px, py, pz)) return;
-    const id = this.map.hotbar[this.slot];
-    w.set(px, py, pz, id);
-    this.chunks.markDirty(px, pz);
-    this.chunks.flush();
-    const def = blockDef(id);
-    if (def) this.opts.sfx.place(def.sound);
+    if (def.block !== Block.Water && this.player.overlapsBlock(px, py, pz)) return;
+    this.editBlocks([[px, py, pz, def.block]]);
+    if (!this.rulesNow.infiniteBlocks) this.inventory.takeOne(this.slot);
+    const bd = blockDef(def.block);
+    if (bd) this.opts.sfx.place(bd.sound);
+    this.held.swing();
     navigator.vibrate?.(8);
-    this.dirty = true;
   }
 
   private select(n: number): void {
-    const len = this.map.hotbar.length;
-    this.slot = ((n % len) + len) % len;
-    this.hud.select(this.slot, blockDef(this.map.hotbar[this.slot])?.name ?? "");
+    this.slot = ((n % 9) + 9) % 9;
+    const s = this.heldStack;
+    this.hud.select(this.slot, s);
+    this.held.show(s?.id ?? -1);
   }
 
-  private toggleFly(): void {
-    if (!this.map.allowFlight) return;
-    this.player.flying = !this.player.flying;
-    this.player.vel.y = 0;
-    this.hud.setFlying(this.player.flying);
-    this.touchControls?.setFlying(this.player.flying);
+  private refreshHotbar(): void {
+    this.hud.setHotbar(this.inventory.slots, this.rulesNow.infiniteBlocks);
+    this.held.show(this.heldStack?.id ?? -1);
   }
 
-  /* ---------- Letters ---------- */
+  /** Throw the held item forward (Q). */
+  private dropHeld(all: boolean): void {
+    const s = this.heldStack;
+    if (!s) return;
+    const n = all ? s.count : 1;
+    const thrown = { ...s, count: n };
+    this.inventory.set(this.slot, s.count - n > 0 ? { ...s, count: s.count - n } : null);
+    this.throwStack(thrown);
+  }
 
-  private collect(index: number): void {
-    this.found.add(index);
-    this.hud.setLetters(this.found);
-    this.opts.sfx.collect();
-    navigator.vibrate?.([20, 40, 20]);
-    const word = this.opts.word;
-    this.hud.toast(`Found "${word[index]}"  ${this.found.size}/${word.length}`);
+  private throwStack(stack: ItemStack): void {
+    const dir = new THREE.Vector3();
+    this.camera.getWorldDirection(dir);
+    const eye = this.player.eye;
+    this.items.spawn(stack, eye.x + dir.x * 0.5, eye.y - 0.3, eye.z + dir.z * 0.5, dir.multiplyScalar(5).add(new THREE.Vector3(0, 1.5, 0)), 1.5);
     this.dirty = true;
+  }
+
+  /* ---------- Survival: dying and respawning ---------- */
+
+  private die(): void {
+    if (this.death.isOpen) return;
+    const p = this.player.pos;
+    if (!this.rules.keepInventory) {
+      // Everything you carried spills out where you fell.
+      for (const s of this.inventory.slots) if (s) this.items.spawn(s, p.x, Math.max(p.y, 1) + 0.6, p.z);
+      this.inventory.clear();
+    }
+    // Show the death screen first: closing the other screens checks it and won't recapture the mouse.
+    this.death.show(Vitals.deathMessage(this.vitals.lastCause));
+    if (this.invScreen.isOpen) this.invScreen.close();
+    if (this.cmdBar.isOpen) this.cmdBar.close();
+    this.setControlsEnabled(false);
+    this.kbm?.releaseLock();
+    this.hud.showHint(false);
+    this.opts.sfx.breakBlock("stone");
     this.save();
-    if (this.found.size >= word.length) setTimeout(() => this.opts.onAllLettersFound(), 900);
+  }
+
+  private respawn(): void {
+    this.death.hide();
+    this.vitals.reset();
+    this.respawnAt(this.spawn);
+    this.setControlsEnabled(true);
+    this.kbm?.requestLock();
+    this.save();
+  }
+
+  private respawnAt(s: Vec3): void {
+    this.player.pos.set(s.x, s.y, s.z);
+    // If something was built on the spawn point, start on top of it.
+    while (this.player.collides() && this.player.pos.y < this.world.sy) this.player.pos.y += 1;
+    this.player.vel.set(0, 0, 0);
+    this.player.resetFall();
+  }
+
+  /* ---------- Commands ---------- */
+
+  private runCommand(line: string): void {
+    const text = line.startsWith("/") ? line : `/${line}`;
+    this.cmdBar.log(text, "info");
+    const r = this.commands.execute(text, this.commandContext);
+    this.cmdBar.log(r.message, r.ok ? "ok" : "error");
+    if (r.ok) this.dirty = true;
+  }
+
+  /** What commands can see and change. */
+  private get commandContext(): CommandContext {
+    const g = this;
+    return {
+      get mode() { return g.mode; },
+      setMode: m => g.setMode(m),
+      get position() { return { x: g.player.pos.x, y: g.player.pos.y, z: g.player.pos.z }; },
+      teleport: (x, y, z) => {
+        g.player.pos.set(x, y, z);
+        g.player.vel.set(0, 0, 0);
+        g.player.resetFall();
+      },
+      get spawn() { return { x: g.spawn.x, y: g.spawn.y, z: g.spawn.z }; },
+      setSpawn: (x, y, z) => { g.spawn = { x, y, z, yaw: g.player.yaw }; },
+      give: (id, count) => count - g.inventory.add(id, count),
+      clearInventory: () => {
+        const n = g.inventory.slots.reduce((a, s) => a + (s?.count ?? 0), 0);
+        g.inventory.clear();
+        return n;
+      },
+      get time() { return g.time; },
+      setTime: t => { g.time = ((t % 1) + 1) % 1; },
+      get rules() { return { ...g.rules }; },
+      setRule: (k, v) => { g.rules[k] = v; },
+      heal: () => g.vitals.heal(),
+      feed: () => g.vitals.feed(),
+      kill: () => {
+        if (g.rulesNow.vitals) {
+          g.vitals.damage(999, "command");
+          g.die();
+        } else g.respawnAt(g.spawn);
+      },
+      get flying() { return g.player.flying; },
+      setFlying: on => g.setFlying(on),
+      get worldSize() { return { x: g.world.sx, y: g.world.sy, z: g.world.sz }; },
+      getBlock: (x, y, z) => g.world.get(Math.floor(x), Math.floor(y), Math.floor(z)),
+      setBlocks: cells => g.editBlocks(cells),
+      get seed() { return g.meta.seed; },
+      get worldName() { return g.meta.name; },
+    };
   }
 
   /* ---------- Saving ---------- */
@@ -432,23 +729,21 @@ export class Game {
     const flat: number[] = [];
     for (const [i, id] of this.world.edits) flat.push(i, id);
     const p = this.player;
-    saveMapSave(this.map.id, {
-      v: 1,
+    saveWorld(this.meta.id, {
+      v: 2,
+      mode: this.mode,
       edits: flat,
-      player: { x: p.pos.x, y: p.pos.y, z: p.pos.z, yaw: p.yaw, pitch: p.pitch },
-      letters: [...this.found],
+      player: { x: p.pos.x, y: p.pos.y, z: p.pos.z, yaw: p.yaw, pitch: p.pitch, flying: p.flying },
       time: this.time,
+      inventory: this.inventory.save(),
+      vitals: { health: this.vitals.health, hunger: this.vitals.hunger, air: this.vitals.air },
+      spawn: { x: this.spawn.x, y: this.spawn.y, z: this.spawn.z },
+      rules: this.rules,
+      selectedSlot: this.slot,
     });
+    updateWorldMeta(this.meta.id, { lastPlayed: Date.now(), mode: this.mode });
     this.dirty = false;
     this.saveTimer = 0;
-  }
-
-  private respawn(): void {
-    const s = this.spawn;
-    this.player.pos.set(s.x, s.y, s.z);
-    // If something was built on the spawn point, start on top of it.
-    while (this.player.collides() && this.player.pos.y < this.world.sy) this.player.pos.y += 1;
-    this.player.vel.set(0, 0, 0);
   }
 
   /* ---------- Sizing ---------- */

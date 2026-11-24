@@ -13,7 +13,13 @@ export interface InputState {
 }
 
 export interface InputActions {
-  place(): void;
+  /** Place the held block, or eat the held food. */
+  use(): void;
+  openInventory(): void;
+  /** Open the command line, optionally starting with some text (e.g. "/"). */
+  openCommands(prefill: string): void;
+  /** Throw the held item (one, or the whole stack). */
+  dropItem(all: boolean): void;
   toggleCamera(): void;
   toggleFly(): void;
   selectSlot(n: number): void;

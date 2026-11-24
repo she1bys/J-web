@@ -56,3 +56,9 @@
   animation: blink 1.1s steps(1) infinite;
 }
 .hint.off { visibility: hidden; }
+
+/* With the menu open, shrink the name so the options fit on short (landscape phone) screens. */
+.title-stage.menu-open {
+  --px: min(20px, calc((100vw - 32px) / var(--cols)), calc(100dvh / 48));
+}
+.title-stage.menu-open .glyph i { transition: width .2s steps(4), height .2s steps(4); }

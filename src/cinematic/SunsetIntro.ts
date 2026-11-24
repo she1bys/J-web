@@ -1,6 +1,6 @@
 /**
- * An original pixel-art sunset title sequence: letterbox bars, a dithered sky,
- * a striped sun rising over the sea, palms, birds, then the title in pink and gold.
+ * An original pixel-art sunset sequence: letterbox bars, a dithered sky,
+ * a striped sun rising over the sea, palms and birds, with an optional title card in pink and gold.
  * Rendered at low resolution on a canvas and scaled up with hard pixel edges.
  */
 type RGB = readonly [number, number, number];
@@ -53,8 +53,8 @@ export class SunsetIntro {
     return this.finish !== null;
   }
 
-  /** Play the movie with `titleRows` as the title card. Resolves once the bars have closed. */
-  play(titleRows: string[]): Promise<void> {
+  /** Play the movie, optionally with a title card (a pixel bitmap). Resolves once the bars have closed. */
+  play(titleRows: string[] = []): Promise<void> {
     this.rows = titleRows;
     const ps = Math.max(4, Math.round(Math.min(innerWidth, innerHeight) / 110));
     this.canvas.width = Math.ceil(innerWidth / ps);
@@ -101,7 +101,7 @@ export class SunsetIntro {
     const cx = W / 2;
     const cy = hz + R * 0.2 - rise * R * 0.95;
     const fade = Math.min(1, t / 0.7);
-    const flash = t > TITLE_AT && t < TITLE_AT + 0.12 ? 0.7 : 0;
+    const flash = this.rows.length && t > TITLE_AT && t < TITLE_AT + 0.12 ? 0.7 : 0;
 
     // Foreground: shoreline and two palms
     const fg = new Uint8Array(W * H);
@@ -120,7 +120,7 @@ export class SunsetIntro {
     const titleAt = (x: number, y: number) => {
       const c = Math.floor((x - tx) / s);
       const r = Math.floor((y - ty) / s);
-      return c >= 0 && c <= shown && c < cols && r >= 0 && r < 7 && this.rows[r][c] === "#";
+      return this.rows.length > 0 && c >= 0 && c <= shown && c < cols && r >= 0 && r < 7 && this.rows[r][c] === "#";
     };
 
     for (let y = 0; y < H; y++) {

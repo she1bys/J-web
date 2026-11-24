@@ -1,8 +1,8 @@
 import { fbm2, valueNoise2 } from "../../core/noise";
 import { Block } from "../world/blocks";
 import type { MapDefinition } from "./types";
-import { bitmapSign, cabin, oakTree } from "./shared/structures";
-import { pickLetterSpots } from "./shared/letters";
+import { cabin, oakTree } from "./shared/structures";
+import { findDrySpawn } from "./shared/spawn";
 
 /** Rolling green hills, a pond, a little cabin and the name floating in the sky. */
 export const meadow: MapDefinition = {
@@ -16,10 +16,10 @@ export const meadow: MapDefinition = {
   hotbar: [Block.Grass, Block.Dirt, Block.Stone, Block.Wood, Block.Planks, Block.Leaves, Block.Glass, Block.Brick, Block.Rose],
   startTime: 0.12,
 
-  generate(w, { rng, titleRows, letterCount }) {
+  generate(w, { seed, rng }) {
     const WATER = 8;
     const spawn = { x: 40, z: 64 };
-    const natural = (x: number, z: number) => 7 + fbm2(x / 26, z / 26, 1, 3) * 10 + valueNoise2(x / 6, z / 6, 2) * 2;
+    const natural = (x: number, z: number) => 7 + fbm2(x / 26, z / 26, seed, 3) * 10 + valueNoise2(x / 6, z / 6, seed + 1) * 2;
     const spawnH = natural(spawn.x, spawn.z);
     const height = (x: number, z: number) => {
       let h = natural(x, z);
@@ -53,13 +53,9 @@ export const meadow: MapDefinition = {
     const cy = w.surfaceY(spawn.x - 12, spawn.z - 4);
     cabin(w, spawn.x - 14, cy, spawn.z - 6);
 
-    // The title in rose blocks, high in the sky to the north.
-    const width = titleRows[0].length;
-    bitmapSign(w, titleRows, Math.floor((w.sx - width) / 2), 29, 14, Block.Rose);
-
+    const start = findDrySpawn(w, spawn.x, spawn.z);
     return {
-      spawn: { x: spawn.x + 0.5, y: w.surfaceY(spawn.x, spawn.z) + 1, z: spawn.z + 0.5, yaw: 0 },
-      letterSpots: pickLetterSpots(w, rng, letterCount, spawn),
+      spawn: { ...start, yaw: 0 },
     };
   },
 };

@@ -70,15 +70,6 @@ export function cactus(w: World, rng: Rng, x: number, y: number, z: number): voi
   for (let k = 1; k <= h; k++) w.set(x, y + k, z, Block.Cactus);
 }
 
-/** Write a pixel bitmap upright in the world, facing +z, with its bottom-left at (x, y, z). */
-export function bitmapSign(w: World, rows: string[], x: number, y: number, z: number, id: BlockId): void {
-  rows.forEach((row, r) => {
-    [...row].forEach((c, i) => {
-      if (c === "#") w.set(x + i, y + rows.length - 1 - r, z, id);
-    });
-  });
-}
-
 /** A stepped pyramid with a rose-block capstone. */
 export function pyramid(w: World, cx: number, baseY: number, cz: number, half: number): void {
   for (let level = 0; level <= half; level++) {
