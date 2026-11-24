@@ -4,62 +4,134 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Joana</title>
-  <meta name="description" content="For Joana, with love.">
-  <meta name="theme-color" content="#1a0b14">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>❤</text></svg>">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&family=Cormorant+Garamond:ital,wght@0,300;0,500;1,300&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
+  <meta name="description" content="Joana">
+  <meta name="theme-color" content="#ffffff">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 6' shape-rendering='crispEdges'><path d='M1 0h2v1h1V0h2v1h1v2H6v1H5v1H4v1H3V5H2V4H1V3H0V1h1z'/></svg>">
+  <style>
+    :root {
+      --ink: #000;
+      --paper: #fff;
+      /* 34 columns across the name; scale pixels to fit any screen */
+      --px: min(20px, calc((100vw - 32px) / 34));
+      --hp: max(5px, calc(var(--px) / 1.6));
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body { height: 100%; }
+
+    body {
+      background: var(--paper);
+      color: var(--ink);
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      cursor: default;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    main {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: calc(var(--px) * 3);
+      padding: 0 16px;
+    }
+
+    .pixels {
+      display: grid;
+      gap: 0;
+      image-rendering: pixelated;
+    }
+
+    .pixels i {
+      display: block;
+      width: var(--px);
+      height: var(--px);
+    }
+
+    /* the hairline shadow closes seams when pixel sizes land on fractions */
+    .pixels i.lit { background: var(--ink); box-shadow: 0 0 0 .5px var(--ink); }
+
+    .heart i { width: var(--hp); height: var(--hp); }
+    .heart.beat { animation: beat 1.2s steps(1) infinite; }
+
+    @keyframes beat {
+      0%, 100% { transform: scale(1); }
+      12%      { transform: scale(1.25); }
+      24%      { transform: scale(1); }
+      36%      { transform: scale(1.15); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .heart.beat { animation: none; }
+    }
+  </style>
 </head>
 <body>
-  <canvas id="sky" aria-hidden="true"></canvas>
-
   <main>
-    <section class="hero" id="top">
-      <p class="eyebrow">for the one I love</p>
-      <h1 class="name" aria-label="Joana">
-        <span>J</span><span>o</span><span>a</span><span>n</span><span>a</span>
-      </h1>
-      <div class="heart-beat" aria-hidden="true">
-        <svg viewBox="0 0 32 29.6"><path d="M23.6,0c-3.4,0-6.3,2.7-7.6,5.6C14.7,2.7,11.8,0,8.4,0C3.8,0,0,3.8,0,8.4c0,9.4,9.5,11.9,16,21.2c6.1-9.3,16-12.1,16-21.2C32,3.8,28.2,0,23.6,0z"/></svg>
-      </div>
-      <a class="scroll-cue" href="#letters">scroll</a>
-    </section>
-
-    <section class="letters" id="letters">
-      <div class="letter reveal">
-        <span class="big">J</span>
-        <p>Joy, in every ordinary day.</p>
-      </div>
-      <div class="letter reveal">
-        <span class="big">O</span>
-        <p>Only you, always you.</p>
-      </div>
-      <div class="letter reveal">
-        <span class="big">A</span>
-        <p>Always the brightest light in the room.</p>
-      </div>
-      <div class="letter reveal">
-        <span class="big">N</span>
-        <p>Now, and every day after.</p>
-      </div>
-      <div class="letter reveal">
-        <span class="big">A</span>
-        <p>All my love.</p>
-      </div>
-    </section>
-
-    <section class="closing reveal">
-      <p class="quote">Of all the names in the world,<br>yours is my favourite.</p>
-      <p class="signature">Joana</p>
-      <button id="love-btn" type="button">Tap for love</button>
-      <p class="counter" id="counter" aria-live="polite"></p>
-    </section>
+    <h1 class="pixels name" id="name" aria-label="Joana"></h1>
+    <div class="pixels heart" id="heart" aria-hidden="true"></div>
   </main>
 
-  <footer>made with <span class="tiny-heart">❤</span> for Joana</footer>
+  <script>
+    const GLYPHS = {
+      J: ["..####", "....##", "....##", "....##", "##..##", "##..##", ".####."],
+      O: [".####.", "##..##", "##..##", "##..##", "##..##", "##..##", ".####."],
+      A: [".####.", "##..##", "##..##", "######", "##..##", "##..##", "##..##"],
+      N: ["##..##", "###.##", "######", "##.###", "##..##", "##..##", "##..##"],
+    };
+    const HEART = [".##.##.", "#######", "#######", ".#####.", "..###..", "...#..."];
 
-  <script src="script.js"></script>
+    // Join letters into one bitmap with a 1-pixel gap between them.
+    function bitmapFor(word) {
+      const rows = GLYPHS[word[0]].map(() => "");
+      [...word].forEach((ch, i) => {
+        GLYPHS[ch].forEach((row, r) => { rows[r] += (i ? "." : "") + row; });
+      });
+      return rows;
+    }
+
+    const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    // Build the grid; return its "on" pixels in random order.
+    function render(el, rows) {
+      el.innerHTML = "";
+      el.style.gridTemplateColumns = `repeat(${rows[0].length}, auto)`;
+      const on = [];
+      rows.forEach(row => [...row].forEach(c => {
+        const i = document.createElement("i");
+        if (c === "#") on.push(i);
+        el.appendChild(i);
+      }));
+      return on.sort(() => Math.random() - 0.5);
+    }
+
+    const name = document.getElementById("name");
+    const heart = document.getElementById("heart");
+    let run = 0;
+
+    function play() {
+      const id = ++run;
+      heart.classList.remove("beat");
+      // Name pixels over 1.2s, then heart pixels over 0.5s.
+      const steps = [
+        ...render(name, bitmapFor("JOANA")).map((i, n, a) => [i, (n / a.length) * 1200]),
+        ...render(heart, HEART).map((i, n, a) => [i, 1300 + (n / a.length) * 500]),
+      ];
+      if (reduceMotion) { steps.forEach(([i]) => i.classList.add("lit")); return; }
+      const t0 = performance.now();
+      let k = 0;
+      (function tick(now) {
+        if (id !== run) return;
+        while (k < steps.length && steps[k][1] <= now - t0) steps[k++][0].classList.add("lit");
+        if (k < steps.length) requestAnimationFrame(tick);
+        else setTimeout(() => id === run && heart.classList.add("beat"), 500);
+      })(t0);
+    }
+
+    play();
+    document.addEventListener("click", play);
+  </script>
 </body>
 </html>
