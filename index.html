@@ -26,11 +26,21 @@
       display: grid;
       place-items: center;
       overflow: hidden;
-      cursor: default;
       -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    /* Cursor-reactive pixel grid behind everything */
+    #grid {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
     }
 
     main {
+      position: relative;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -38,21 +48,38 @@
       padding: 0 16px;
     }
 
-    .pixels {
-      display: grid;
-      gap: 0;
-      image-rendering: pixelated;
+    .name {
+      display: flex;
+      gap: var(--px);
+      perspective: 600px;
+      cursor: pointer;
     }
 
-    .pixels i {
+    .glyph {
+      display: grid;
+      transform-origin: 50% 50%;
+    }
+
+    /* split-flap style flip, run letter by letter */
+    .glyph.flip { animation: flip .6s both; }
+
+    @keyframes flip {
+      0%    { transform: rotateX(0); animation-timing-function: ease-in; }
+      40%   { transform: rotateX(-90deg); }
+      40.1% { transform: rotateX(90deg); animation-timing-function: cubic-bezier(.3, 1.6, .5, 1); }
+      100%  { transform: rotateX(0); }
+    }
+
+    .glyph i, .heart i {
       display: block;
       width: var(--px);
       height: var(--px);
     }
 
     /* the hairline shadow closes seams when pixel sizes land on fractions */
-    .pixels i.lit { background: var(--ink); box-shadow: 0 0 0 .5px var(--ink); }
+    i.lit { background: var(--ink); box-shadow: 0 0 0 .5px var(--ink); }
 
+    .heart { display: grid; }
     .heart i { width: var(--hp); height: var(--hp); }
     .heart.beat { animation: beat 1.2s steps(1) infinite; }
 
@@ -64,14 +91,16 @@
     }
 
     @media (prefers-reduced-motion: reduce) {
-      .heart.beat { animation: none; }
+      .heart.beat, .glyph.flip { animation: none; }
     }
   </style>
 </head>
 <body>
+  <canvas id="grid" aria-hidden="true"></canvas>
+
   <main>
-    <h1 class="pixels name" id="name" aria-label="Joana"></h1>
-    <div class="pixels heart" id="heart" aria-hidden="true"></div>
+    <h1 class="name" id="name" aria-label="Joana"></h1>
+    <div class="heart" id="heart" aria-hidden="true"></div>
   </main>
 
   <script>
@@ -83,19 +112,14 @@
     };
     const HEART = [".##.##.", "#######", "#######", ".#####.", "..###..", "...#..."];
 
-    // Join letters into one bitmap with a 1-pixel gap between them.
-    function bitmapFor(word) {
-      const rows = GLYPHS[word[0]].map(() => "");
-      [...word].forEach((ch, i) => {
-        GLYPHS[ch].forEach((row, r) => { rows[r] += (i ? "." : "") + row; });
-      });
-      return rows;
-    }
-
     const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const name = document.getElementById("name");
+    const heart = document.getElementById("heart");
 
-    // Build the grid; return its "on" pixels in random order.
-    function render(el, rows) {
+    /* ---------- Name + heart, assembled pixel by pixel ---------- */
+
+    // Fill a grid element from a bitmap; return its "on" pixels.
+    function fill(el, rows) {
       el.innerHTML = "";
       el.style.gridTemplateColumns = `repeat(${rows[0].length}, auto)`;
       const on = [];
@@ -104,20 +128,27 @@
         if (c === "#") on.push(i);
         el.appendChild(i);
       }));
-      return on.sort(() => Math.random() - 0.5);
+      return on;
     }
 
-    const name = document.getElementById("name");
-    const heart = document.getElementById("heart");
+    const shuffle = a => a.sort(() => Math.random() - 0.5);
     let run = 0;
 
-    function play() {
+    function assemble() {
       const id = ++run;
       heart.classList.remove("beat");
+      name.innerHTML = "";
+      const letters = [..."JOANA"].flatMap(ch => {
+        const g = document.createElement("span");
+        g.className = "glyph";
+        g.setAttribute("aria-hidden", "true");
+        name.appendChild(g);
+        return fill(g, GLYPHS[ch]);
+      });
       // Name pixels over 1.2s, then heart pixels over 0.5s.
       const steps = [
-        ...render(name, bitmapFor("JOANA")).map((i, n, a) => [i, (n / a.length) * 1200]),
-        ...render(heart, HEART).map((i, n, a) => [i, 1300 + (n / a.length) * 500]),
+        ...shuffle(letters).map((i, n, a) => [i, (n / a.length) * 1200]),
+        ...shuffle(fill(heart, HEART)).map((i, n, a) => [i, 1300 + (n / a.length) * 500]),
       ];
       if (reduceMotion) { steps.forEach(([i]) => i.classList.add("lit")); return; }
       const t0 = performance.now();
@@ -130,8 +161,82 @@
       })(t0);
     }
 
-    play();
-    document.addEventListener("click", play);
+    /* ---------- Letter cascade: flip each letter in a wave ---------- */
+
+    let flipping = false;
+    function cascade() {
+      if (flipping || reduceMotion) return;
+      flipping = true;
+      const glyphs = [...name.children];
+      glyphs.forEach((g, n) => {
+        g.classList.remove("flip");
+        void g.offsetWidth; // restart animation
+        g.style.animationDelay = `${n * 70}ms`;
+        g.classList.add("flip");
+      });
+      setTimeout(() => { flipping = false; }, glyphs.length * 70 + 600);
+    }
+
+    name.addEventListener("pointerenter", cascade);
+    name.addEventListener("click", cascade);
+
+    /* ---------- Pixel canvas: cells light up under the cursor and fade ---------- */
+
+    const canvas = document.getElementById("grid");
+    const ctx = canvas.getContext("2d");
+    let cell, cols, rowsN, heat, dpr;
+
+    function size() {
+      dpr = Math.min(devicePixelRatio || 1, 2);
+      canvas.width = innerWidth * dpr;
+      canvas.height = innerHeight * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // Match the grid to the name's pixel size so everything shares one grid feel.
+      cell = parseFloat(getComputedStyle(name.querySelector("i") || name).width) || 16;
+      cols = Math.ceil(innerWidth / cell);
+      rowsN = Math.ceil(innerHeight / cell);
+      heat = new Float32Array(cols * rowsN);
+    }
+
+    let active = false;
+    function draw() {
+      ctx.clearRect(0, 0, innerWidth, innerHeight);
+      let any = false;
+      for (let n = 0; n < heat.length; n++) {
+        const h = heat[n];
+        if (h <= 0) continue;
+        any = true;
+        ctx.fillStyle = `rgba(0,0,0,${h * 0.12})`;
+        ctx.fillRect((n % cols) * cell, Math.floor(n / cols) * cell, cell - 1, cell - 1);
+        heat[n] = Math.max(0, h - 0.025);
+      }
+      active = any;
+      if (any) requestAnimationFrame(draw);
+    }
+
+    function touch(x, y) {
+      const c = Math.floor(x / cell), r = Math.floor(y / cell);
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const cc = c + dx, rr = r + dy;
+        if (cc < 0 || rr < 0 || cc >= cols || rr >= rowsN) continue;
+        const v = dx || dy ? 0.45 : 1;
+        heat[rr * cols + cc] = Math.max(heat[rr * cols + cc], v);
+      }
+      if (!active) { active = true; requestAnimationFrame(draw); }
+    }
+
+    if (!reduceMotion) {
+      addEventListener("pointermove", e => touch(e.clientX, e.clientY));
+      addEventListener("pointerdown", e => touch(e.clientX, e.clientY));
+    }
+
+    /* ---------- Start ---------- */
+
+    assemble();
+    size();
+    addEventListener("resize", size);
+    // Click empty space to rebuild the name.
+    document.addEventListener("click", e => { if (!name.contains(e.target)) assemble(); });
   </script>
 </body>
 </html>
