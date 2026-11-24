@@ -6,14 +6,13 @@
   <title>Joana</title>
   <meta name="description" content="Joana">
   <meta name="theme-color" content="#ffffff">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 7 6' shape-rendering='crispEdges'><path d='M1 0h2v1h1V0h2v1h1v2H6v1H5v1H4v1H3V5H2V4H1V3H0V1h1z'/></svg>">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 6 7' shape-rendering='crispEdges'><path d='M2 0h4v4H6v2H5v1H1V6H0V4h2v2h2V1H2z'/></svg>">
   <style>
     :root {
       --ink: #000;
       --paper: #fff;
       /* 34 columns across the name; scale pixels to fit any screen */
       --px: min(20px, calc((100vw - 32px) / 34));
-      --hp: max(5px, calc(var(--px) / 1.6));
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -26,33 +25,39 @@
       display: grid;
       place-items: center;
       overflow: hidden;
+      cursor: pointer;
       -webkit-tap-highlight-color: transparent;
       user-select: none;
+      touch-action: manipulation;
     }
 
-    /* Cursor-reactive pixel grid behind everything */
-    #grid {
+    canvas {
       position: fixed;
       inset: 0;
       width: 100%;
       height: 100%;
       pointer-events: none;
     }
+    #fx { z-index: 2; }
 
     main {
       position: relative;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: calc(var(--px) * 3);
       padding: 0 16px;
+    }
+    main.shake { animation: shake .16s steps(4); }
+
+    @keyframes shake {
+      0%   { transform: translate(2px, -1px); }
+      25%  { transform: translate(-2px, 1px); }
+      50%  { transform: translate(1px, 2px); }
+      75%  { transform: translate(-1px, -2px); }
+      100% { transform: none; }
     }
 
     .name {
       display: flex;
       gap: var(--px);
       perspective: 600px;
-      cursor: pointer;
     }
 
     .glyph {
@@ -60,7 +65,7 @@
       transform-origin: 50% 50%;
     }
 
-    /* split-flap style flip, run letter by letter */
+    /* split-flap style flip on hover, run letter by letter */
     .glyph.flip { animation: flip .6s both; }
 
     @keyframes flip {
@@ -70,38 +75,85 @@
       100%  { transform: rotateX(0); }
     }
 
-    .glyph i, .heart i {
+    .glyph i {
       display: block;
       width: var(--px);
       height: var(--px);
+      background-size: 100% 100%;
+      image-rendering: pixelated;
     }
 
     /* the hairline shadow closes seams when pixel sizes land on fractions */
-    i.lit { background: var(--ink); box-shadow: 0 0 0 .5px var(--ink); }
+    i.lit { background-color: var(--ink); box-shadow: 0 0 0 .5px var(--ink); }
 
-    .heart { display: grid; }
-    .heart i { width: var(--hp); height: var(--hp); }
-    .heart.beat { animation: beat 1.2s steps(1) infinite; }
+    /* Mining: crack stages drawn as white pixel lines on the block */
+    i.c1 { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges' fill='white'%3E%3Cpath d='M3 3h1v1H3zM4 4h1v1H4zM4 2h1v1H4z'/%3E%3C/svg%3E"); }
+    i.c2 { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges' fill='white'%3E%3Cpath d='M3 3h1v1H3zM4 4h1v1H4zM4 2h1v1H4zM2 4h1v1H2zM5 5h1v1H5zM5 1h1v1H5zM1 5h1v1H1zM2 2h1v1H2z'/%3E%3C/svg%3E"); }
+    i.c3 { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges' fill='white'%3E%3Cpath d='M3 3h1v1H3zM4 4h1v1H4zM4 2h1v1H4zM2 4h1v1H2zM5 5h1v1H5zM5 1h1v1H5zM1 5h1v1H1zM2 2h1v1H2zM6 6h1v1H6zM6 0h1v1H6zM0 6h1v1H0zM1 1h1v1H1zM6 3h1v1H6zM3 6h1v1H3zM3 0h1v1H3zM0 3h1v1H0z'/%3E%3C/svg%3E"); }
 
-    @keyframes beat {
-      0%, 100% { transform: scale(1); }
-      12%      { transform: scale(1.25); }
-      24%      { transform: scale(1); }
-      36%      { transform: scale(1.15); }
+    /* Placing a block back: quick chunky pop */
+    i.place { animation: place .18s steps(3) both; }
+    @keyframes place {
+      0%   { transform: scale(.4); }
+      66%  { transform: scale(1.12); }
+      100% { transform: scale(1); }
     }
 
+    /* ---------- Cinematic intro (pixel sunset) ---------- */
+    #cine {
+      position: fixed;
+      inset: 0;
+      z-index: 5;
+      background: #000;
+      display: none;
+    }
+    #cine.on { display: block; }
+    #scene {
+      display: block;
+      width: 100%;
+      height: 100%;
+      image-rendering: pixelated;
+    }
+    /* faint scanlines for a screen feel */
+    #cine::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: repeating-linear-gradient(to bottom, rgba(0,0,0,.14) 0 2px, transparent 2px 4px);
+      pointer-events: none;
+    }
+    .bar {
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 0;
+      background: #000;
+      z-index: 1;
+      transition: height .5s steps(6);
+    }
+    .bar.top { top: 0; }
+    .bar.bot { bottom: 0; }
+    #cine.bars .bar { height: 11vh; }
+    #cine.closing .bar { height: 50.5vh; transition-duration: .45s; }
+
     @media (prefers-reduced-motion: reduce) {
-      .heart.beat, .glyph.flip { animation: none; }
+      .glyph.flip, i.place, main.shake { animation: none; }
     }
   </style>
 </head>
 <body>
   <canvas id="grid" aria-hidden="true"></canvas>
+  <canvas id="fx" aria-hidden="true"></canvas>
 
-  <main>
+  <main id="stage">
     <h1 class="name" id="name" aria-label="Joana"></h1>
-    <div class="heart" id="heart" aria-hidden="true"></div>
   </main>
+
+  <div id="cine" aria-hidden="true">
+    <div class="bar top"></div>
+    <canvas id="scene"></canvas>
+    <div class="bar bot"></div>
+  </div>
 
   <script>
     const GLYPHS = {
@@ -110,62 +162,318 @@
       A: [".####.", "##..##", "##..##", "######", "##..##", "##..##", "##..##"],
       N: ["##..##", "###.##", "######", "##.###", "##..##", "##..##", "##..##"],
     };
-    const HEART = [".##.##.", "#######", "#######", ".#####.", "..###..", "...#..."];
 
     const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const stage = document.getElementById("stage");
     const name = document.getElementById("name");
-    const heart = document.getElementById("heart");
+    let blocks = [];   // every "on" pixel of the name
+    let busy = true;   // true while assembling or mining
 
-    /* ---------- Name + heart, assembled pixel by pixel ---------- */
-
-    // Fill a grid element from a bitmap; return its "on" pixels.
-    function fill(el, rows) {
-      el.innerHTML = "";
-      el.style.gridTemplateColumns = `repeat(${rows[0].length}, auto)`;
-      const on = [];
-      rows.forEach(row => [...row].forEach(c => {
-        const i = document.createElement("i");
-        if (c === "#") on.push(i);
-        el.appendChild(i);
-      }));
-      return on;
-    }
-
-    const shuffle = a => a.sort(() => Math.random() - 0.5);
-    let run = 0;
-
-    function assemble() {
-      const id = ++run;
-      heart.classList.remove("beat");
-      name.innerHTML = "";
-      const letters = [..."JOANA"].flatMap(ch => {
-        const g = document.createElement("span");
-        g.className = "glyph";
-        g.setAttribute("aria-hidden", "true");
-        name.appendChild(g);
-        return fill(g, GLYPHS[ch]);
-      });
-      // Name pixels over 1.2s, then heart pixels over 0.5s.
-      const steps = [
-        ...shuffle(letters).map((i, n, a) => [i, (n / a.length) * 1200]),
-        ...shuffle(fill(heart, HEART)).map((i, n, a) => [i, 1300 + (n / a.length) * 500]),
-      ];
-      if (reduceMotion) { steps.forEach(([i]) => i.classList.add("lit")); return; }
+    /* ---------- Shared animation timeline ---------- */
+    // Schedule [ms, fn] steps and run them on animation frames.
+    function timeline(steps, done) {
+      steps.sort((a, b) => a[0] - b[0]);
       const t0 = performance.now();
       let k = 0;
       (function tick(now) {
-        if (id !== run) return;
-        while (k < steps.length && steps[k][1] <= now - t0) steps[k++][0].classList.add("lit");
+        while (k < steps.length && steps[k][0] <= now - t0) steps[k++][1]();
         if (k < steps.length) requestAnimationFrame(tick);
-        else setTimeout(() => id === run && heart.classList.add("beat"), 500);
+        else if (done) done();
       })(t0);
     }
 
-    /* ---------- Letter cascade: flip each letter in a wave ---------- */
+    /* ---------- Name, assembled pixel by pixel ---------- */
+    function build() {
+      name.innerHTML = "";
+      blocks = [];
+      for (const ch of "JOANA") {
+        const g = document.createElement("span");
+        g.className = "glyph";
+        g.setAttribute("aria-hidden", "true");
+        const rows = GLYPHS[ch];
+        g.style.gridTemplateColumns = `repeat(${rows[0].length}, auto)`;
+        rows.forEach(row => [...row].forEach(c => {
+          const i = document.createElement("i");
+          if (c === "#") blocks.push(i);
+          g.appendChild(i);
+        }));
+        name.appendChild(g);
+      }
+    }
 
+    function assemble() {
+      busy = true;
+      build();
+      if (reduceMotion) { blocks.forEach(b => b.classList.add("lit")); busy = false; return; }
+      const order = [...blocks].sort(() => Math.random() - 0.5);
+      timeline(order.map((b, n) => [(n / order.length) * 1200, () => b.classList.add("lit")]),
+               () => { busy = false; });
+    }
+
+    /* ---------- Particles (block debris + dust) ---------- */
+    const fx = document.getElementById("fx");
+    const fctx = fx.getContext("2d");
+    let parts = [], fxRunning = false;
+
+    function spawn(x, y, vx, vy, size, shade, life, grav = 0.45) {
+      parts.push({ x, y, vx, vy, size, shade, life, max: life, grav });
+      if (!fxRunning) { fxRunning = true; requestAnimationFrame(stepFx); }
+    }
+
+    function stepFx() {
+      fctx.clearRect(0, 0, innerWidth, innerHeight);
+      const floor = innerHeight - 2;
+      parts = parts.filter(p => (p.life -= 1) > 0);
+      for (const p of parts) {
+        p.vy += p.grav;
+        p.x += p.vx;
+        p.y += p.vy;
+        if (p.y + p.size > floor) {            // land, bounce a little, slide to rest
+          p.y = floor - p.size;
+          p.vy *= -0.35;
+          p.vx *= 0.7;
+        }
+        const a = Math.min(1, p.life / 20);    // blink out at the end of life
+        fctx.fillStyle = `rgba(${p.shade},${p.shade},${p.shade},${a})`;
+        fctx.fillRect(Math.round(p.x), Math.round(p.y), p.size, p.size);
+      }
+      if (parts.length) requestAnimationFrame(stepFx);
+      else { fxRunning = false; fctx.clearRect(0, 0, innerWidth, innerHeight); }
+    }
+
+    // A block bursts into small square chunks that hop out and fall.
+    function shatter(b) {
+      const r = b.getBoundingClientRect();
+      const s = Math.max(3, Math.round(r.width / 3));
+      for (let gy = 0; gy < 3; gy++) for (let gx = 0; gx < 3; gx++) {
+        if (Math.random() < 0.35) continue;
+        spawn(r.left + gx * s, r.top + gy * s,
+              (gx - 1) * 1.4 + (Math.random() - 0.5) * 2.2,
+              -2.5 - Math.random() * 3.5,
+              s - (Math.random() < 0.5 ? 1 : 0),
+              [0, 30, 70][Math.floor(Math.random() * 3)],
+              60 + Math.random() * 50);
+      }
+    }
+
+    // Light grey puff when a block is placed back.
+    function puff(b) {
+      const r = b.getBoundingClientRect();
+      const s = Math.max(2, Math.round(r.width / 5));
+      for (let n = 0; n < 2; n++) {
+        spawn(r.left + Math.random() * r.width, r.top + r.height - s,
+              (Math.random() - 0.5) * 1.2, -0.6 - Math.random() * 0.8,
+              s, 190, 22, 0.02);
+      }
+    }
+
+    /* ---------- Mining: crack, break, then place back ---------- */
+    function mine(x, y) {
+      if (busy || reduceMotion) return;
+      busy = true;
+
+      const centers = blocks.map(b => {
+        const r = b.getBoundingClientRect();
+        return Math.hypot(r.left + r.width / 2 - x, r.top + r.height / 2 - y);
+      });
+      const nearest = Math.min(...centers);
+      const crack = (b, c) => { b.classList.remove("c1", "c2", "c3"); if (c) b.classList.add(c); };
+      const steps = [];
+      let last = 0;
+
+      blocks.forEach((b, n) => {
+        // The block you hit cracks slowly; the break then spreads outward.
+        const hit = 330, t = hit + (centers[n] - nearest) * 1.3;
+        const spacing = centers[n] === nearest ? 110 : 55;
+        steps.push([t - spacing * 3, () => crack(b, "c1")]);
+        steps.push([t - spacing * 2, () => crack(b, "c2")]);
+        steps.push([t - spacing,     () => crack(b, "c3")]);
+        steps.push([t, () => {
+          crack(b);
+          b.classList.remove("lit", "place");
+          shatter(b);
+          if (centers[n] === nearest) {
+            stage.classList.remove("shake"); void stage.offsetWidth; stage.classList.add("shake");
+          }
+        }]);
+        last = Math.max(last, t);
+      });
+
+      // Let the debris fall, roll the intro, then build the name back.
+      timeline(steps, () => setTimeout(() => intro(rebuild), 650));
+    }
+
+    // Place the blocks back, bottom row first, like building it up again.
+    function rebuild() {
+      const byHeight = [...blocks].map(b => [b, b.getBoundingClientRect()])
+        .sort((a, b) => b[1].top - a[1].top || a[1].left - b[1].left);
+      timeline(byHeight.map(([b], n) => [300 + n * 9, () => { b.classList.add("lit", "place"); puff(b); }]),
+        () => setTimeout(() => {
+          blocks.forEach(b => b.classList.remove("place"));
+          busy = false;
+        }, 200));
+    }
+
+    /* ---------- Cinematic intro: an original pixel-art sunset title sequence ---------- */
+    const cine = document.getElementById("cine");
+    const scene = document.getElementById("scene");
+    const sctx = scene.getContext("2d");
+    const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5].map(v => (v + 0.5) / 16);
+    const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
+    const SKY = ["#140826", "#2e0f52", "#5e1a72", "#a3247a", "#e2416f", "#f7804c", "#ffc15e"].map(hex);
+    const SUN_TOP = hex("#ffe27a"), SUN_BOT = hex("#ff3d7f");
+    const SEA_A = hex("#3b1254"), SEA_B = hex("#14061f");
+    const GLOW = hex("#ffb36b"), INK = hex("#0c0414"), BIRD = hex("#2a0d3d");
+    const TITLE_A = hex("#ff4fa3"), TITLE_B = hex("#ffbd4a"), SHADOW = hex("#1a0628");
+    const NAME_ROWS = (() => {
+      const rows = Array(7).fill("");
+      [..."JOANA"].forEach((ch, i) => GLYPHS[ch].forEach((r, y) => { rows[y] += (i ? "." : "") + r; }));
+      return rows;
+    })();
+
+    const INTRO_LEN = 6.4;          // seconds before the bars close
+    const TITLE_AT = 2.9;           // when the name lands
+    let introDone = null, introT0 = 0, introClosing = false;
+
+    function intro(done) {
+      // Size the low-res canvas so each scene pixel is a chunky block on screen.
+      const ps = Math.max(4, Math.round(Math.min(innerWidth, innerHeight) / 110));
+      scene.width = Math.ceil(innerWidth / ps);
+      scene.height = Math.ceil(innerHeight / ps);
+      introDone = done;
+      introClosing = false;
+      introT0 = performance.now();
+      cine.className = "on";
+      requestAnimationFrame(() => cine.classList.add("bars"));
+      requestAnimationFrame(renderIntro);
+    }
+
+    function closeIntro() {
+      if (introClosing) return;
+      introClosing = true;
+      cine.classList.add("closing");
+      setTimeout(() => {
+        cine.className = "";
+        const done = introDone;
+        introDone = null;
+        done && done();
+      }, 520);
+    }
+
+    function renderIntro(now) {
+      if (!introDone) return;
+      const t = (now - introT0) / 1000;
+      if (t > INTRO_LEN) closeIntro();
+      drawScene(t);
+      requestAnimationFrame(renderIntro);
+    }
+
+    const ease = x => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
+    const mix = (a, b, f) => [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+
+    function drawScene(t) {
+      const W = scene.width, H = scene.height;
+      const img = sctx.createImageData(W, H), d = img.data;
+      const hz = Math.round(H * 0.64);
+      const rise = ease(t / 3.2);
+      const R = Math.min(W, H) * 0.24;
+      const cx = W / 2, cy = hz + R * 0.2 - rise * R * 0.95;
+      const fade = Math.min(1, t / 0.7);                     // fade up from black
+      const flash = t > TITLE_AT && t < TITLE_AT + 0.12 ? 0.7 : 0;
+
+      // Foreground: a dark shoreline with two palms.
+      const fg = new Uint8Array(W * H);
+      const shore = y => H * 0.9 + Math.sin(y * 0.09) * H * 0.015;
+      for (let x = 0; x < W; x++) for (let y = Math.floor(shore(x)); y < H; y++) fg[y * W + x] = 1;
+      const ph = Math.min(W, H);
+      palm(fg, W, H, W * 0.08, shore(W * 0.08), ph * 0.5, 1, t);
+      palm(fg, W, H, W * 0.9, shore(W * 0.9), ph * 0.4, -1, t + 1);
+
+      // Title bitmap at low resolution, revealed left to right.
+      const s = Math.max(1, Math.floor(Math.min((W * 0.82) / 34, (H * 0.18) / 7)));
+      const tx = Math.round((W - 34 * s) / 2), ty = Math.round(H * 0.14);
+      const shownCols = t < TITLE_AT ? -1 : Math.floor(ease((t - TITLE_AT) / 0.5) * 34);
+      const titleAt = (x, y) => {
+        const c = Math.floor((x - tx) / s), r = Math.floor((y - ty) / s);
+        return c >= 0 && c <= shownCols && c < 34 && r >= 0 && r < 7 && NAME_ROWS[r][c] === "#";
+      };
+
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const th = BAYER[(y & 3) * 4 + (x & 3)];
+        let c;
+        if (y < hz) {
+          // Dithered sky bands, darker before the sun is up.
+          const f = Math.min(0.999, (y / hz) * (0.55 + 0.45 * rise));
+          const p = f * (SKY.length - 1), i = Math.floor(p);
+          c = p - i > th ? SKY[i + 1] : SKY[i];
+          // Sun disc with sliding stripe cut-outs on its lower half.
+          const dx = x - cx, dy = y - cy;
+          if (dx * dx + dy * dy <= R * R) {
+            const v = (dy + R) / (2 * R);
+            const cut = v > 0.45 && ((y - Math.floor(t * 5)) % 6 + 6) % 6 < (v - 0.45) * 7;
+            if (!cut) c = v > th ? SUN_BOT : SUN_TOP;
+          }
+          if (y === hz - 1) c = GLOW;
+        } else {
+          // Sea with a shimmering reflection of the sun.
+          const dd = (y - hz) / (H - hz);
+          c = dd > th ? SEA_B : SEA_A;
+          const w = R * (1 - dd * 0.55) * (0.65 + 0.35 * Math.sin(y * 0.8 + t * 2.4));
+          if (Math.abs(x - cx) < w * rise && (y + Math.floor(t * 6)) % 3 === 0 &&
+              Math.sin(x * 0.45 + t * 3 + y) > -0.3) c = dd < 0.3 ? SUN_TOP : SUN_BOT;
+        }
+        // Birds drifting across the sky.
+        for (let b = 0; b < 3; b++) {
+          const bx = Math.floor(((t * (7 + b * 2) + b * 37) % (W + 20)) - 10);
+          const by = Math.floor(H * (0.12 + b * 0.07) + Math.sin(t * 1.3 + b) * 2);
+          const up = Math.floor(t * 4 + b) % 2;
+          if ((y === by && Math.abs(x - bx) === 1) || (x === bx && y === by + (up ? 1 : 0)) ||
+              (y === by - up && Math.abs(x - bx) === 2)) c = BIRD;
+        }
+        if (fg[y * W + x]) c = INK;
+        // Title: drop shadow, then a dithered pink-to-gold fill.
+        if (titleAt(x - 1, y - 1) && !titleAt(x, y)) c = SHADOW;
+        if (titleAt(x, y)) {
+          const v = ((y - ty) / (7 * s));
+          c = v > th ? TITLE_B : TITLE_A;
+        }
+        if (flash) c = mix(c, [255, 255, 255], flash);
+        const o = (y * W + x) * 4;
+        d[o] = c[0] * fade; d[o + 1] = c[1] * fade; d[o + 2] = c[2] * fade; d[o + 3] = 255;
+      }
+      sctx.putImageData(img, 0, 0);
+    }
+
+    // Pixel palm silhouette: a leaning trunk and drooping, gently swaying fronds.
+    function palm(fg, W, H, bx, by, h, lean, t) {
+      const put = (x, y) => {
+        x = Math.round(x); y = Math.round(y);
+        if (x >= 0 && y >= 0 && x < W && y < H) fg[y * W + x] = 1;
+      };
+      let topX = bx, topY = by - h;
+      for (let k = 0; k <= h; k++) {
+        const f = k / h, x = bx + lean * f * f * h * 0.28;
+        put(x, by - k); put(x + 1, by - k);
+        if (k === Math.round(h)) { topX = x; topY = by - k; }
+      }
+      const sway = Math.sin(t * 1.4) * 0.06;
+      const L = h * 0.42;
+      for (const a of [-2.9, -2.4, -1.9, -1.25, -0.7, -0.25]) {
+        const ang = a + sway;
+        for (let s = 0; s < L; s++) {
+          const f = s / L;
+          const x = topX + Math.cos(ang) * s;
+          const y = topY + Math.sin(ang) * s * 0.55 + f * f * L * 0.55;
+          put(x, y);
+          if (f < 0.7) put(x, y + 1);
+        }
+      }
+    }
+
+    /* ---------- Letter flip on mouse hover ---------- */
     let flipping = false;
-    function cascade() {
-      if (flipping || reduceMotion) return;
+    name.addEventListener("pointerenter", e => {
+      if (e.pointerType !== "mouse" || flipping || busy || reduceMotion) return;
       flipping = true;
       const glyphs = [...name.children];
       glyphs.forEach((g, n) => {
@@ -174,47 +482,46 @@
         g.style.animationDelay = `${n * 70}ms`;
         g.classList.add("flip");
       });
-      setTimeout(() => { flipping = false; }, glyphs.length * 70 + 600);
-    }
+      setTimeout(() => {
+        glyphs.forEach(g => g.classList.remove("flip"));
+        flipping = false;
+      }, glyphs.length * 70 + 600);
+    });
 
-    name.addEventListener("pointerenter", cascade);
-    name.addEventListener("click", cascade);
-
-    /* ---------- Pixel canvas: cells light up under the cursor and fade ---------- */
-
-    const canvas = document.getElementById("grid");
-    const ctx = canvas.getContext("2d");
-    let cell, cols, rowsN, heat, dpr;
+    /* ---------- Background pixel grid: cells light up under the cursor ---------- */
+    const grid = document.getElementById("grid");
+    const gctx = grid.getContext("2d");
+    let cell, cols, rowsN, heat, gridActive = false;
 
     function size() {
-      dpr = Math.min(devicePixelRatio || 1, 2);
-      canvas.width = innerWidth * dpr;
-      canvas.height = innerHeight * dpr;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      // Match the grid to the name's pixel size so everything shares one grid feel.
-      cell = parseFloat(getComputedStyle(name.querySelector("i") || name).width) || 16;
+      const dpr = Math.min(devicePixelRatio || 1, 2);
+      for (const [c, x] of [[grid, gctx], [fx, fctx]]) {
+        c.width = innerWidth * dpr;
+        c.height = innerHeight * dpr;
+        x.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+      cell = blocks[0] ? blocks[0].getBoundingClientRect().width : 16;
       cols = Math.ceil(innerWidth / cell);
       rowsN = Math.ceil(innerHeight / cell);
       heat = new Float32Array(cols * rowsN);
     }
 
-    let active = false;
-    function draw() {
-      ctx.clearRect(0, 0, innerWidth, innerHeight);
+    function drawGrid() {
+      gctx.clearRect(0, 0, innerWidth, innerHeight);
       let any = false;
       for (let n = 0; n < heat.length; n++) {
         const h = heat[n];
         if (h <= 0) continue;
         any = true;
-        ctx.fillStyle = `rgba(0,0,0,${h * 0.12})`;
-        ctx.fillRect((n % cols) * cell, Math.floor(n / cols) * cell, cell - 1, cell - 1);
+        gctx.fillStyle = `rgba(0,0,0,${h * 0.12})`;
+        gctx.fillRect((n % cols) * cell, Math.floor(n / cols) * cell, cell - 1, cell - 1);
         heat[n] = Math.max(0, h - 0.025);
       }
-      active = any;
-      if (any) requestAnimationFrame(draw);
+      gridActive = any;
+      if (any) requestAnimationFrame(drawGrid);
     }
 
-    function touch(x, y) {
+    function warm(x, y) {
       const c = Math.floor(x / cell), r = Math.floor(y / cell);
       for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
         const cc = c + dx, rr = r + dy;
@@ -222,21 +529,20 @@
         const v = dx || dy ? 0.45 : 1;
         heat[rr * cols + cc] = Math.max(heat[rr * cols + cc], v);
       }
-      if (!active) { active = true; requestAnimationFrame(draw); }
-    }
-
-    if (!reduceMotion) {
-      addEventListener("pointermove", e => touch(e.clientX, e.clientY));
-      addEventListener("pointerdown", e => touch(e.clientX, e.clientY));
+      if (!gridActive) { gridActive = true; requestAnimationFrame(drawGrid); }
     }
 
     /* ---------- Start ---------- */
-
     assemble();
     size();
     addEventListener("resize", size);
-    // Click empty space to rebuild the name.
-    document.addEventListener("click", e => { if (!name.contains(e.target)) assemble(); });
+    if (!reduceMotion) addEventListener("pointermove", e => warm(e.clientX, e.clientY));
+    // Click or tap anywhere to mine the name, starting from that spot.
+    addEventListener("pointerdown", e => {
+      if (introDone) { closeIntro(); return; }   // tap again to skip the intro
+      if (!reduceMotion) warm(e.clientX, e.clientY);
+      mine(e.clientX, e.clientY);
+    });
   </script>
 </body>
 </html>
