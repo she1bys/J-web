@@ -1,7 +1,8 @@
 import { GAME } from "../config/game";
 import { loadSettings, saveSettings, type Settings } from "../config/settings";
 import { Sfx } from "../core/audio";
-import { Music } from "../core/music";
+import { MusicPlayer } from "../core/MusicPlayer";
+import { addDeviceSongs, clearDeviceSongs } from "../core/songStore";
 import { isTouchDevice, prefersReducedMotion } from "../core/timeline";
 import { Viewport } from "../core/viewport";
 import { textToRows } from "../fonts/pixelFont";
@@ -14,7 +15,10 @@ import { MAPS, getMap, type MapDefinition } from "../game/maps";
 import { loadMapSave, clearMapSave } from "../game/world/WorldStore";
 import type { Game } from "../game/Game";
 
-type Screen = "main" | "maps" | "settings" | "howto" | "credits" | "pause" | "confirm-reset";
+type Screen = "main" | "maps" | "settings" | "music" | "howto" | "credits" | "pause" | "confirm-reset";
+
+const escapeHtml = (s: string) =>
+  s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
 /**
  * The whole app as a small state machine:
@@ -23,7 +27,8 @@ type Screen = "main" | "maps" | "settings" | "howto" | "credits" | "pause" | "co
 export class App {
   private settings: Settings = loadSettings();
   private readonly sfx = new Sfx();
-  private readonly music = new Music();
+  private readonly music = new MusicPlayer();
+  private songPicker: HTMLInputElement;
   private readonly touch = isTouchDevice();
   private readonly reduce = prefersReducedMotion();
   private readonly titleRows = textToRows(GAME.title);
@@ -79,11 +84,20 @@ export class App {
     this.titleMenu = new Menu(this.menuEl, click);
     this.pauseMenu = new Menu(this.pauseEl.querySelector(".menu")!, click);
 
+    // Hidden file picker for "Add songs from device".
+    this.songPicker = document.createElement("input");
+    this.songPicker.type = "file";
+    this.songPicker.accept = "audio/*";
+    this.songPicker.multiple = true;
+    this.songPicker.hidden = true;
+    root.appendChild(this.songPicker);
+    this.songPicker.addEventListener("change", () => void this.addSongs());
+
     this.applyAudioSettings();
-    this.sfx.onReady = (ctx, out) => {
-      this.music.attach(ctx, out);
-      this.music.setPlaying(true);
+    this.music.onChange = () => {
+      if (this.stack[this.stack.length - 1] === "music") this.render(false, this.menu.focusedIndex());
     };
+    void this.music.load();
     this.bindGlobalEvents();
     void this.start();
   }
@@ -110,7 +124,10 @@ export class App {
       if (this.settings.trail && !this.game && !this.reduce) this.trail.warm(e.clientX, e.clientY);
     });
     // Any first tap or key unlocks sound (browsers require a user gesture).
-    const unlock = () => this.sfx.unlock();
+    const unlock = () => {
+      this.sfx.unlock();
+      this.music.unlock();
+    };
     addEventListener("pointerdown", unlock, { capture: true });
     addEventListener("keydown", unlock, { capture: true });
     addEventListener("pointerdown", e => {
@@ -172,6 +189,10 @@ export class App {
       s.look = ((s.look - 1 + d + 10) % 10) + 1;
       this.saveSettings();
     };
+    const volume = (d: number) => {
+      s.musicVolume = Math.max(0, Math.min(10, s.musicVolume + d));
+      this.saveSettings();
+    };
     return {
       main: () => [
         button("Play", () => this.go("maps")),
@@ -190,7 +211,8 @@ export class App {
       ],
       settings: () => [
         title("Settings"),
-        button(`Sound: ${onOff(s.sound)}`, toggle("sound")),
+        button("Music", () => this.go("music")),
+        button(`Sound effects: ${onOff(s.sound)}`, toggle("sound")),
         button(`Camera: ${s.camera === "first" ? "1st" : "3rd"} person`, () => {
           s.camera = s.camera === "first" ? "third" : "first";
           this.saveSettings();
@@ -204,6 +226,30 @@ export class App {
         button(`Show FPS: ${onOff(s.showFps)}`, toggle("showFps")),
         button("Back", () => this.back()),
       ],
+      music: () => {
+        const { game, device } = this.music.count;
+        const current = this.music.current;
+        const items: MenuItem[] = [
+          title("Music"),
+          button(`Music: ${onOff(s.music)}`, toggle("music")),
+          button(`Volume: ${s.musicVolume}`, () => volume(s.musicVolume >= 10 ? -10 : 1), { onAdjust: volume }),
+        ];
+        if (game + device === 0) {
+          items.push(text("No songs yet.<br>Add some from your device."));
+        } else {
+          items.push(text(s.music && current ? `Now playing<br>${escapeHtml(current.title)}` : `${game + device} songs`));
+          items.push(button("Next song", () => this.music.next()));
+        }
+        items.push(button("Add songs from device", () => this.songPicker.click(), { detail: "Stays on this device only" }));
+        if (device) {
+          items.push(button(`Remove my songs (${device})`, async () => {
+            await clearDeviceSongs();
+            await this.music.load();
+          }));
+        }
+        items.push(button("Back", () => this.back()));
+        return items;
+      },
       howto: () => [
         title("How to play"),
         text(
@@ -261,8 +307,22 @@ export class App {
 
   private applyAudioSettings(): void {
     this.sfx.enabled = this.settings.sound;
-    this.music.enabled = this.settings.sound;
+    this.music.enabled = this.settings.music;
+    this.music.setVolume(this.settings.musicVolume / 10);
     this.music.setPlaying(true);
+  }
+
+  /** Save songs picked from the device, then add them to the playlist. */
+  private async addSongs(): Promise<void> {
+    const files = this.songPicker.files;
+    if (!files?.length) return;
+    const added = await addDeviceSongs(files);
+    this.songPicker.value = "";
+    await this.music.load();
+    if (added && !this.settings.music) {
+      this.settings.music = true;
+      this.saveSettings();
+    }
   }
 
   private openMenu(): void {

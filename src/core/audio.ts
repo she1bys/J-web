@@ -11,9 +11,6 @@ export class Sfx {
   private noise: AudioBuffer | null = null;
   private master: GainNode | null = null;
 
-  /** Runs once audio is unlocked, with the context and an output to connect to. */
-  onReady: ((ctx: AudioContext, out: AudioNode) => void) | null = null;
-
   /** Call from a user gesture (tap/click/key) to unlock audio. */
   unlock(): void {
     // On iPhone, play through the silent switch like a game or video would.
@@ -35,10 +32,8 @@ export class Sfx {
     this.noise = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
     const data = this.noise.getChannelData(0);
     for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
-    // The master bus is shared with the music, so give it its own volume control.
     this.sfxBus = this.ctx.createGain();
     this.sfxBus.connect(this.master);
-    this.onReady?.(this.ctx, this.master);
   }
 
   private sfxBus: GainNode | null = null;

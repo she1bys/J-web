@@ -14,7 +14,7 @@ and find the five hidden pink letters.
 | Tests | **[Vitest](https://vitest.dev)** | Fast unit tests for the world, physics, maps and font |
 | Font | **Silkscreen** (via Fontsource) | Pixel font for menus and HUD, bundled locally |
 
-Everything else (textures, sounds, music, the character, the maps) is made in code, so there are no image or audio files to manage.
+Everything else (textures, sound effects, the character, the maps) is made in code. The only media files are the songs you add.
 
 ## Getting started
 
@@ -51,13 +51,15 @@ Then open the address Vite prints (usually http://localhost:5173).
 │   │   └── settings.ts        Player settings and their defaults
 │   ├── core/                  Small shared building blocks
 │   │   ├── audio.ts           Sound effects, synthesised in code
-│   │   ├── music.ts           Generated background music
+│   │   ├── MusicPlayer.ts     Plays your songs, shuffled
+│   │   ├── songStore.ts       Songs added from a device (kept in the browser)
 │   │   ├── noise.ts           Terrain noise
 │   │   ├── random.ts          Seeded random numbers
 │   │   ├── storage.ts         Safe localStorage access
 │   │   ├── timeline.ts        Animation timing helpers
 │   │   ├── viewport.ts        Landscape handling on phones
 │   │   └── mobile.ts          Blocks pinch/double-tap zoom
+│   ├── assets/music/          Drop song files here to bundle them with the game
 │   ├── fonts/pixelFont.ts     The 6×7 pixel font (A–Z, 0–9)
 │   ├── title/                 Title screen: pixel name, debris, cursor trail
 │   ├── cinematic/             The sunset intro movie
@@ -89,6 +91,19 @@ Then open the address Vite prints (usually http://localhost:5173).
 | Flatlands | `src/game/maps/flatlands.ts` | Creative mode: instant mining and flying |
 
 To add one, see [docs/ADDING_A_MAP.md](docs/ADDING_A_MAP.md).
+
+## Music
+
+The game plays your own songs, shuffled. There are two ways to add them:
+
+1. **For everyone:** put audio files (`.mp3`, `.m4a`, `.ogg`, `.wav`…) in
+   [`src/assets/music/`](src/assets/music/). On GitHub you can use *Add file → Upload files* in that
+   folder. They're picked up automatically on the next deploy. Only add music you have the right to
+   share, because it's published on the public site.
+2. **Just for you:** in the game, open *Settings → Music → Add songs from device*. Those songs are
+   saved in that browser only and never uploaded.
+
+*Settings → Music* also has on/off, volume and *Next song*.
 
 ## Renaming the game
 

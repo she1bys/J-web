@@ -14,7 +14,11 @@ export interface Settings {
   trail: boolean;
   /** Play the sunset movie before entering a map. */
   intro: boolean;
+  /** Sound effects (steps, mining, menus). */
   sound: boolean;
+  music: boolean;
+  /** Music volume, 0–10. */
+  musicVolume: number;
   /** Let the sun rise and set while you play. */
   dayCycle: boolean;
   showFps: boolean;
@@ -28,6 +32,8 @@ export const DEFAULT_SETTINGS: Settings = {
   trail: true,
   intro: true,
   sound: true,
+  music: true,
+  musicVolume: 6,
   dayCycle: true,
   showFps: false,
 };
