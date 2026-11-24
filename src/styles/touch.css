@@ -1,0 +1,58 @@
+/* Phone and tablet controls, laid out for two thumbs in landscape. */
+.t-root { position: absolute; inset: 0; pointer-events: none; }
+
+/* Joystick: hidden until the left thumb lands, then centred under it. */
+.t-stick {
+  position: absolute; width: 124px; height: 124px; transform: translate(-50%, -50%);
+  border: 3px solid rgba(0, 0, 0, .7); background: rgba(255, 255, 255, .28);
+  opacity: 0; transition: opacity .12s steps(2);
+}
+.t-stick.on { opacity: 1; }
+.t-stick.sprint { border-color: var(--pink); }
+.t-knob {
+  position: absolute; left: 50%; top: 50%; width: 46px; height: 46px;
+  transform: translate(-50%, -50%); background: rgba(0, 0, 0, .8);
+}
+.t-stick.sprint .t-knob { background: var(--pink); }
+
+.t-btn {
+  pointer-events: auto; touch-action: none;
+  font: 12px var(--font-pixel); text-transform: uppercase; letter-spacing: .06em;
+  color: var(--ink); background: rgba(255, 255, 255, .82);
+  border: 3px solid var(--ink); box-shadow: 3px 3px 0 var(--ink);
+}
+.t-btn.down, .t-btn.on { background: var(--ink); color: var(--paper); }
+.t-btn.down { transform: translate(3px, 3px); box-shadow: none; }
+.t-btn[hidden] { display: none; }
+
+/* Right thumb: big JUMP in the corner, MINE above it, BUILD to its left. */
+.t-actions {
+  position: absolute;
+  right: max(18px, env(safe-area-inset-right));
+  bottom: calc(var(--slot, 44px) + 30px + env(safe-area-inset-bottom));
+  display: grid;
+  grid-template-columns: 72px 84px;
+  grid-template-rows: 64px 84px;
+  gap: 12px;
+}
+.t-mine { grid-column: 2; grid-row: 1; }
+.t-build { grid-column: 1; grid-row: 2; align-self: end; height: 64px; }
+.t-jump { grid-column: 2; grid-row: 2; font-size: 14px; }
+
+.t-top {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  right: calc(max(12px, env(safe-area-inset-right)) + 58px);
+  display: flex; gap: 8px;
+}
+.t-small { width: 56px; height: 46px; font-size: 11px; }
+
+/* Smaller phones in landscape */
+@media (max-height: 380px) {
+  .t-actions { grid-template-columns: 62px 72px; grid-template-rows: 56px 72px; gap: 10px; }
+  .t-build { height: 56px; }
+}
+
+/* Item bar slot size: a little smaller on short landscape phones */
+.play-layer { --slot: 44px; }
+@media (max-height: 420px) { .play-layer { --slot: 38px; } }

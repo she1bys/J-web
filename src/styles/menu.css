@@ -1,0 +1,72 @@
+/* Pixel buttons and menu screens (title menu and pause menu). */
+.menu {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: calc(var(--px) * 2.5);
+  max-height: calc(100dvh - var(--px) * 12);
+  overflow-y: auto;
+  padding: 4px 8px 10px;
+  scrollbar-width: none;
+}
+.menu::-webkit-scrollbar { display: none; }
+.menu[hidden] { display: none; }
+
+.btn {
+  font-family: var(--font-pixel);
+  text-transform: uppercase;
+  font-size: clamp(14px, 4vw, 17px);
+  letter-spacing: .14em;
+  width: min(320px, 80vw);
+  min-height: 48px;
+  padding: 10px 8px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 3px solid var(--ink);
+  box-shadow: 4px 4px 0 var(--ink);
+  cursor: pointer;
+}
+.btn:hover, .btn:focus-visible { background: var(--ink); color: var(--paper); outline: none; }
+.btn:active { transform: translate(4px, 4px); box-shadow: none; }
+.btn-detail { font-size: 10px; letter-spacing: .08em; opacity: .7; }
+.pop { animation: place .18s steps(3) both; }
+
+.menu-title {
+  font: clamp(20px, 6vw, 30px) var(--font-pixel);
+  text-transform: uppercase;
+  letter-spacing: .2em;
+  margin-bottom: 4px;
+}
+.menu-text {
+  font: 13px var(--font-pixel);
+  text-transform: uppercase;
+  letter-spacing: .18em;
+  line-height: 2;
+  text-align: center;
+}
+
+.pause {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  background: rgba(255, 255, 255, .86);
+}
+.pause[hidden] { display: none; }
+.pause .menu { margin: 0; max-height: 100%; padding-top: 16px; }
+
+/* Short landscape screens (phones): tighter menus */
+@media (max-height: 480px) {
+  .menu { gap: 8px; }
+  .btn { min-height: 40px; padding: 6px 8px; font-size: 13px; }
+  .btn-detail { font-size: 9px; }
+  .menu-title { font-size: 18px; }
+  .menu-text { font-size: 11px; }
+}

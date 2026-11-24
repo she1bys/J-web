@@ -1,0 +1,121 @@
+# Joana
+
+A pixel-art block world that runs in the browser, on computers and phones.
+Her name is the title screen. Tap it to open the menu, pick a map, explore, mine, build,
+and find the five hidden pink letters.
+
+## Tech stack
+
+| Part | Choice | Why |
+| --- | --- | --- |
+| Language | **TypeScript** | JavaScript with type checking, so mistakes are caught before the game runs |
+| 3D engine | **[three.js](https://threejs.org)** | The standard WebGL library for 3D in the browser |
+| Build tool | **[Vite](https://vite.dev)** | Instant reloads while developing, small optimised builds |
+| Tests | **[Vitest](https://vitest.dev)** | Fast unit tests for the world, physics, maps and font |
+| Font | **Silkscreen** (via Fontsource) | Pixel font for menus and HUD, bundled locally |
+
+Everything else (textures, sounds, music, the character, the maps) is made in code, so there are no image or audio files to manage.
+
+## Getting started
+
+You need [Node.js](https://nodejs.org) 20.19 or newer.
+
+```bash
+npm install
+npm run dev
+```
+
+Then open the address Vite prints (usually http://localhost:5173).
+
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Start the development server with live reload |
+| `npm run build` | Type-check and build the site into `dist/` |
+| `npm run preview` | Serve the built `dist/` folder locally |
+| `npm test` | Run the unit tests |
+| `npm run typecheck` | Check types without building |
+| `npm run check` | Type-check, test and build: run this before pushing |
+
+> The game must be served over http(s). Opening `index.html` directly from disk won't work.
+
+## Project structure
+
+```
+├── index.html                 Page shell (viewport, manifest, app root)
+├── public/                    Static files copied as-is (icon, web app manifest)
+├── src/
+│   ├── main.ts                Entry point: styles + starts the App
+│   ├── app/App.ts             The flow: title → menus → intro → game → pause
+│   ├── config/
+│   │   ├── game.ts            Title text, hidden word, credits  ← rename the game here
+│   │   └── settings.ts        Player settings and their defaults
+│   ├── core/                  Small shared building blocks
+│   │   ├── audio.ts           Sound effects, synthesised in code
+│   │   ├── music.ts           Generated background music
+│   │   ├── noise.ts           Terrain noise
+│   │   ├── random.ts          Seeded random numbers
+│   │   ├── storage.ts         Safe localStorage access
+│   │   ├── timeline.ts        Animation timing helpers
+│   │   ├── viewport.ts        Landscape handling on phones
+│   │   └── mobile.ts          Blocks pinch/double-tap zoom
+│   ├── fonts/pixelFont.ts     The 6×7 pixel font (A–Z, 0–9)
+│   ├── title/                 Title screen: pixel name, debris, cursor trail
+│   ├── cinematic/             The sunset intro movie
+│   ├── ui/Menu.ts             Menu rendering and keyboard navigation
+│   ├── styles/                CSS, one file per area
+│   └── game/
+│       ├── Game.ts            Runs a map: world, player, camera, HUD, saving
+│       ├── world/             Blocks, the world grid, chunk meshing, raycasting, saves
+│       ├── textures/          Pixel-art texture atlas painted in code
+│       ├── player/            Physics, camera rig, character model
+│       ├── input/             Keyboard + mouse, and touch controls
+│       ├── hud/               Item bar, crosshair, letters, messages
+│       ├── effects/           Sky + day/night, clouds, debris, block selection
+│       ├── collectibles/      The hidden letters
+│       └── maps/              One file per map, plus shared/ helpers
+├── tests/                     Unit tests
+├── docs/                      Guides for extending the game
+└── .github/workflows/         CI: type-check, test, build, deploy to GitHub Pages
+```
+
+## Maps
+
+| Map | File | Highlights |
+| --- | --- | --- |
+| Meadow | `src/game/maps/meadow.ts` | Hills, pond, cabin, oak trees |
+| Desert | `src/game/maps/desert.ts` | Dunes, cacti, palm oasis, stepped pyramid |
+| Snowy Peaks | `src/game/maps/snowyPeaks.ts` | Mountains, pines, frozen lake |
+| Sunset Islands | `src/game/maps/sunsetIslands.ts` | Islands in a warm sea, golden-hour sky |
+| Flatlands | `src/game/maps/flatlands.ts` | Creative mode: instant mining and flying |
+
+To add one, see [docs/ADDING_A_MAP.md](docs/ADDING_A_MAP.md).
+
+## Renaming the game
+
+Change `title` (and `collectWord`) in [`src/config/game.ts`](src/config/game.ts). The title screen,
+intro movie, sign in the sky and hidden letters all follow. Also update `<title>` in `index.html`
+and the names in `public/manifest.webmanifest`.
+
+## Controls
+
+**Computer:** WASD move · mouse look · Space jump (double-tap to fly in Flatlands) · Shift sprint ·
+hold left click to mine · right click to build · 1–9 or wheel to pick blocks · V camera · Esc pause.
+
+**Phone / tablet (landscape):** left thumb anywhere for the joystick (push to the edge to sprint) ·
+drag on the right to look · hold MINE · tap BUILD · JUMP (double-tap to fly in Flatlands) · CAM switches view.
+
+On Android the game goes fullscreen and locks to landscape when you press Play. iPhones don't
+allow websites to lock orientation, so the game view rotates itself while the phone is upright.
+Adding the site to the home screen opens it fullscreen in landscape.
+
+## Deploying
+
+- **GitHub Pages:** in the repository settings, go to *Pages* and set *Source* to **GitHub Actions**.
+  Every push to `main` then runs the checks and publishes the site.
+- **Vercel / Netlify:** import the repository; they detect Vite automatically
+  (build command `npm run build`, output folder `dist`).
+
+## Credits and licences
+
+- three.js: MIT licence
+- Silkscreen font by Jason Kottke: SIL Open Font License
