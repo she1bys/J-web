@@ -9,6 +9,7 @@ export interface StoredSong {
   blob: Blob;
 }
 
+// Kept from the first version so songs already added stay available.
 const DB_NAME = "joana-music";
 const STORE = "songs";
 

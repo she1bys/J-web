@@ -123,7 +123,7 @@ export class App {
     this.resize();
     await this.title.assemble();
     this.busy = false;
-    this.hintEl.textContent = this.touch ? "Tap her name" : "Click her name";
+    this.hintEl.textContent = this.touch ? "Tap to start" : "Click to start";
     this.hintEl.classList.remove("off");
     this.nameEl.classList.add("ready");
   }

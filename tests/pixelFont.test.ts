@@ -15,9 +15,9 @@ describe("pixel font", () => {
   });
 
   it("lays out a word with one-pixel gaps", () => {
-    const rows = textToRows("JOANA");
+    const rows = textToRows("GRACIA");
     expect(rows).toHaveLength(7);
-    expect(rows[0].length).toBe(5 * 6 + 4);
+    expect(rows[0].length).toBe(6 * 6 + 5);
   });
 
   it("treats unknown characters as spaces", () => {

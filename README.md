@@ -1,7 +1,8 @@
-# Joana
+# Gracia
 
-A pixel-art block game that runs in the browser, on computers and phones.
-Her name is the title screen. Tap it to open the menu, create or load a world, and play in
+A pixel-art block game that runs in the browser, on computers and phones. The name is inspired by
+Joana: her name means "God is gracious", and *gracia* means grace.
+Tap the title to open the menu, create or load a world, and play in
 **Survival** (health, hunger, gather, craft) or **Creative** (every block, flying).
 
 ## Tech stack
