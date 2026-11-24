@@ -9,6 +9,7 @@ export const flatlands: MapDefinition = {
   size: { x: 80, y: 48, z: 80 },
   seed: 5,
   sky: { day: 0xc8e6ff, night: 0x0b1026, dusk: 0xffb38a },
+  ambience: { wind: 0.3, birds: 0.5, waves: 0, crickets: 0.5 },
   fog: [36, 90],
   hotbar: [Block.Grass, Block.Planks, Block.Brick, Block.Cobble, Block.Glass, Block.Sandstone, Block.Ice, Block.Lantern, Block.Rose],
   startTime: 0.2,

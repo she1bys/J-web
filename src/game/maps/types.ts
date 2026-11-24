@@ -1,5 +1,6 @@
 import type { Rng } from "../../core/random";
 import type { GameMode } from "../modes";
+import type { AmbienceProfile } from "../../audio/Ambience";
 import type { BlockId } from "../world/blocks";
 import type { World } from "../world/World";
 
@@ -23,6 +24,8 @@ export interface MapDefinition {
   /** Seed used for worlds made before seeds could be chosen. */
   seed: number;
   sky: SkyPalette;
+  /** Background sounds: how much wind, birdsong, surf and crickets (0–1 each). */
+  ambience: AmbienceProfile;
   /** Fog start and end distance. */
   fog: [near: number, far: number];
   /** Blocks in the item bar (up to 9). */

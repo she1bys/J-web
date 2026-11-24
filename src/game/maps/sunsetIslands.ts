@@ -11,6 +11,7 @@ export const sunsetIslands: MapDefinition = {
   size: { x: 96, y: 32, z: 96 },
   seed: 4,
   sky: { day: 0xffc9a3, night: 0x1a0b2e, dusk: 0xff6f91 },
+  ambience: { wind: 0.4, birds: 0.5, waves: 1, crickets: 0.6 },
   fog: [30, 80],
   hotbar: [Block.Sand, Block.Grass, Block.PalmWood, Block.Planks, Block.Leaves, Block.Glass, Block.Lantern, Block.Brick, Block.Rose],
   startTime: 0.44,

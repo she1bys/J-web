@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { Settings, CameraMode } from "../config/settings";
-import type { Sfx } from "../core/audio";
+import type { AudioEngine } from "../audio/AudioEngine";
+import { Ambience } from "../audio/Ambience";
 import { createRng, type Rng } from "../core/random";
 import type { Viewport } from "../core/viewport";
 import { isTouchDevice } from "../core/timeline";
@@ -51,7 +52,7 @@ export interface GameOptions {
   settings: Settings;
   /** The saved world to play. */
   world: WorldMeta;
-  sfx: Sfx;
+  audio: AudioEngine;
   /** The player asked to pause (button, Esc, or the mouse was released). */
   onPause: () => void;
   /** "Main menu" from the death screen. */
@@ -119,6 +120,7 @@ export class Game {
   private lastT = 0;
   private colors = new Map<number, [number, number, number]>();
   private quality = new AdaptiveQuality();
+  private ambience: Ambience;
   private unsubscribers: (() => void)[] = [];
 
   constructor(opts: GameOptions) {
@@ -165,6 +167,7 @@ export class Game {
     this.selection = new BlockSelection(this.scene, this.texture);
     this.items = new ItemEntities(this.scene, this.world, this.texture);
     this.scene.add(this.camera); // so the held item (a child of the camera) renders
+    this.ambience = new Ambience(opts.audio, this.map.ambience);
     this.held = new HeldItem(this.camera, this.texture);
 
     // Player
@@ -208,7 +211,7 @@ export class Game {
       this.inventory,
       () => this.closeUi(),
       stack => this.throwStack(stack),
-      kind => (kind === "craft" ? opts.sfx.collect() : opts.sfx.click()),
+      kind => opts.audio.play(kind),
     );
     this.cmdBar = new CommandBar(
       opts.container,
@@ -251,6 +254,7 @@ export class Game {
       this.hud.showHint(true);
       setTimeout(() => this.hud.showHint(false), 4500);
     }
+    this.ambience.setActive(true);
     this.lastT = performance.now();
     requestAnimationFrame(this.frame);
   }
@@ -264,6 +268,8 @@ export class Game {
     this.setControlsEnabled(false);
     this.kbm?.releaseLock();
     this.hud.showHint(false);
+    this.ambience.setActive(false);
+    this.opts.audio.setUnderwater(false);
     this.save();
     if (notify) this.opts.onPause();
   }
@@ -298,6 +304,7 @@ export class Game {
     this.debris.dispose();
     this.selection.dispose();
     this.items.dispose();
+    this.ambience.dispose();
     this.held.dispose();
     this.character.dispose();
     this.texture.dispose();
@@ -323,7 +330,7 @@ export class Game {
     this.setControlsEnabled(false);
     this.kbm?.releaseLock();
     this.hud.showHint(false);
-    this.invScreen.open(this.mode);
+    this.invScreen.open(this.mode, this.slot);
   }
 
   private openCommands(prefill: string): void {
@@ -359,7 +366,8 @@ export class Game {
   private update(dt: number): void {
     const { player, input, settings } = this;
     const alive = !this.death.isOpen;
-    const sfx = this.opts.sfx;
+    const audio = this.opts.audio;
+    const feet = { x: player.pos.x, y: player.pos.y, z: player.pos.z };
 
     // Look
     const sens = (0.0008 + settings.look * 0.00045) * (this.touch ? 2.4 : 1);
@@ -374,13 +382,14 @@ export class Game {
     } : { x: 0, z: 0, jump: false, sprint: false, descend: false }, this.touch);
     if (ev.step !== null) {
       const d = blockDef(ev.step);
-      if (d) sfx.step(d.sound);
+      if (d) audio.step(d.sound, feet);
     }
     if (ev.landed) {
       const d = blockDef(this.world.get(Math.floor(player.pos.x), Math.floor(player.pos.y - 0.1), Math.floor(player.pos.z)));
-      if (d) sfx.place(d.sound);
+      if (d) audio.step(d.sound, feet);
+      audio.play("land", { at: feet, volume: Math.min(1, 0.4 + ev.fell * 0.1) });
     }
-    if (ev.splashed) sfx.splash();
+    if (ev.splashed) audio.play("splash", { at: feet });
 
     // Survival: fall damage, hunger, air
     if (this.rulesNow.vitals && alive) {
@@ -394,7 +403,7 @@ export class Game {
       });
       if (hurt > 0) {
         this.hud.flashHurt();
-        sfx.hit("dirt");
+        audio.play("hurt");
         navigator.vibrate?.(30);
       }
       if (this.vitals.dead) this.die();
@@ -429,7 +438,7 @@ export class Game {
       if (!alive) return stack.count;
       const left = this.inventory.add(stack.id, stack.count, stack.dur);
       if (left < stack.count) {
-        sfx.click();
+        audio.play("pickup", { volume: 0.7 });
         this.dirty = true;
       }
       return left;
@@ -439,6 +448,14 @@ export class Game {
       this.updateTarget();
       this.updateMining(dt);
     } else this.selection.hide();
+
+    // Sound follows the camera; ambience follows the time of day.
+    const fwd = new THREE.Vector3();
+    this.camera.getWorldDirection(fwd);
+    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(this.camera.quaternion);
+    audio.setListener(this.camera.position, fwd, up);
+    audio.setUnderwater(this.rig.underwater());
+    this.ambience.update(dt, this.camera.position, Math.max(0, Math.min(1, (light - 0.3) / 0.7)));
 
     this.hud.tickFps(dt);
     this.saveTimer += dt;
@@ -514,7 +531,7 @@ export class Game {
     this.mineProgress += instant || info.seconds <= 0 ? 1 : dt / info.seconds;
     this.hitTimer -= dt;
     if (this.hitTimer <= 0 && !instant) {
-      this.opts.sfx.hit(def.sound);
+      this.opts.audio.hit(def.sound, { x: t.x + 0.5, y: t.y + 0.5, z: t.z + 0.5 });
       this.held.swing();
       this.hitTimer = 0.25;
     }
@@ -522,7 +539,7 @@ export class Game {
     if (this.mineProgress >= 1) {
       this.breakBlock(t, info.drops);
       if (tool && !instant && this.inventory.wear(this.slot)) {
-        this.opts.sfx.breakBlock("wood");
+        this.opts.audio.play("toolBreak");
         this.hud.toast("Your tool broke");
       }
       if (this.rulesNow.vitals) this.vitals.exert(0.3);
@@ -566,7 +583,7 @@ export class Game {
       w.isWater(t.x, t.y, t.z + 1) || w.isWater(t.x, t.y, t.z - 1);
     this.editBlocks([[t.x, t.y, t.z, wet ? Block.Water : Block.Air]]);
     this.debris.burst(t.x, t.y, t.z, this.colorOf(id));
-    if (def) this.opts.sfx.breakBlock(def.sound);
+    if (def) this.opts.audio.breakBlock(def.sound, { x: t.x + 0.5, y: t.y + 0.5, z: t.z + 0.5 });
     navigator.vibrate?.(12);
     if (drops && this.rulesNow.drops) {
       for (const d of blockDrops(id, this.rng)) this.items.spawn(d, t.x + 0.5, t.y + 0.5, t.z + 0.5);
@@ -584,7 +601,7 @@ export class Game {
       if (!this.rulesNow.vitals) return;
       if (this.vitals.eat(def.food)) {
         this.inventory.takeOne(this.slot);
-        this.opts.sfx.collect();
+        this.opts.audio.play("eat");
         this.held.swing();
         this.dirty = true;
       } else this.hud.toast("You're full");
@@ -602,7 +619,7 @@ export class Game {
     this.editBlocks([[px, py, pz, def.block]]);
     if (!this.rulesNow.infiniteBlocks) this.inventory.takeOne(this.slot);
     const bd = blockDef(def.block);
-    if (bd) this.opts.sfx.place(bd.sound);
+    if (bd) this.opts.audio.place(bd.sound, { x: px + 0.5, y: py + 0.5, z: pz + 0.5 });
     this.held.swing();
     navigator.vibrate?.(8);
   }
@@ -654,12 +671,13 @@ export class Game {
     this.setControlsEnabled(false);
     this.kbm?.releaseLock();
     this.hud.showHint(false);
-    this.opts.sfx.breakBlock("stone");
+    this.opts.audio.play("death");
     this.save();
   }
 
   private respawn(): void {
     this.death.hide();
+    this.opts.audio.play("respawn");
     this.vitals.reset();
     this.respawnAt(this.spawn);
     this.setControlsEnabled(true);

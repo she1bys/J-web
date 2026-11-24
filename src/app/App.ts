@@ -1,6 +1,6 @@
 import { GAME } from "../config/game";
 import { loadSettings, saveSettings, type Settings } from "../config/settings";
-import { Sfx } from "../core/audio";
+import { AudioEngine } from "../audio/AudioEngine";
 import { MusicPlayer } from "../core/MusicPlayer";
 import { addDeviceSongs, clearDeviceSongs } from "../core/songStore";
 import { isIOS, isStandalone, isTouchDevice, prefersReducedMotion } from "../core/timeline";
@@ -40,7 +40,7 @@ const escapeHtml = (s: string) =>
  */
 export class App {
   private settings: Settings = loadSettings();
-  private readonly sfx = new Sfx();
+  private readonly audio = new AudioEngine();
   private readonly music = new MusicPlayer();
   private songPicker: HTMLInputElement;
   private readonly touch = isTouchDevice();
@@ -96,7 +96,7 @@ export class App {
     this.title = new TitleScreen(this.nameEl, $(".title-stage"), this.particles);
     this.intro = new SunsetIntro(root);
     this.viewport = new Viewport(this.playLayer);
-    const click = () => this.sfx.click();
+    const click = () => this.audio.click();
     this.titleMenu = new Menu(this.menuEl, click);
     this.pauseMenu = new Menu(this.pauseEl.querySelector(".menu")!, click);
 
@@ -142,7 +142,7 @@ export class App {
     });
     // Any first tap or key unlocks sound (browsers require a user gesture).
     const unlock = () => {
-      this.sfx.unlock();
+      this.audio.unlock();
       this.music.unlock();
     };
     // iPhones may only allow audio when a tap ends, so listen to the whole tap.
@@ -207,6 +207,15 @@ export class App {
     };
     const look = (d: number) => {
       s.look = ((s.look - 1 + d + 10) % 10) + 1;
+      this.saveSettings();
+    };
+    const sfx = (d: number) => {
+      s.sfxVolume = Math.max(0, Math.min(10, s.sfxVolume + d));
+      this.saveSettings();
+      this.audio.click();
+    };
+    const amb = (d: number) => {
+      s.ambienceVolume = Math.max(0, Math.min(10, s.ambienceVolume + d));
       this.saveSettings();
     };
     const volume = (d: number) => {
@@ -296,7 +305,8 @@ export class App {
       settings: () => [
         title("Settings"),
         button("Music", () => this.go("music")),
-        button(`Sound effects: ${onOff(s.sound)}`, toggle("sound")),
+        button(`Sound effects: ${s.sfxVolume || "Off"}`, () => sfx(s.sfxVolume >= 10 ? -10 : 1), { onAdjust: sfx }),
+        button(`Ambience: ${s.ambienceVolume || "Off"}`, () => amb(s.ambienceVolume >= 10 ? -10 : 1), { onAdjust: amb }),
         button(`Camera: ${s.camera === "first" ? "1st" : "3rd"} person`, () => {
           s.camera = s.camera === "first" ? "third" : "first";
           this.saveSettings();
@@ -387,7 +397,7 @@ export class App {
   }
 
   private applyAudioSettings(): void {
-    this.sfx.enabled = this.settings.sound;
+    this.audio.setVolumes(this.settings.sfxVolume / 10, this.settings.ambienceVolume / 10);
     this.music.enabled = this.settings.music;
     this.music.setVolume(this.settings.musicVolume / 10);
     this.music.setPlaying(true);
@@ -409,7 +419,7 @@ export class App {
   private openMenu(): void {
     if (this.menuOpen || this.busy) return;
     this.menuOpen = true;
-    this.sfx.click();
+    this.audio.click();
     // Slide the name up into place as the options appear below it.
     const before = this.nameEl.getBoundingClientRect().top;
     this.hintEl.hidden = true;
@@ -464,7 +474,7 @@ export class App {
       viewport: this.viewport,
       settings: this.settings,
       world,
-      sfx: this.sfx,
+      audio: this.audio,
       onPause: () => this.showPause(),
       onExitToMenu: () => void this.toMainMenu(),
     });

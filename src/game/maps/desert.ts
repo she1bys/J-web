@@ -12,6 +12,7 @@ export const desert: MapDefinition = {
   size: { x: 96, y: 40, z: 96 },
   seed: 2,
   sky: { day: 0xd6ecf7, night: 0x120d24, dusk: 0xff9a5a },
+  ambience: { wind: 0.85, birds: 0.1, waves: 0, crickets: 0.35 },
   fog: [32, 84],
   hotbar: [Block.Sand, Block.Sandstone, Block.Cactus, Block.PalmWood, Block.Planks, Block.Glass, Block.Brick, Block.Lantern, Block.Rose],
   startTime: 0.18,

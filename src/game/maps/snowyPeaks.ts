@@ -12,6 +12,7 @@ export const snowyPeaks: MapDefinition = {
   size: { x: 80, y: 56, z: 80 },
   seed: 3,
   sky: { day: 0xdbe8f2, night: 0x0a0f22, dusk: 0xf2a3b8 },
+  ambience: { wind: 1, birds: 0.15, waves: 0, crickets: 0 },
   fog: [24, 64],
   hotbar: [Block.Snow, Block.SnowyGrass, Block.Ice, Block.Stone, Block.Cobble, Block.Wood, Block.PineLeaves, Block.Lantern, Block.Rose],
   startTime: 0.1,

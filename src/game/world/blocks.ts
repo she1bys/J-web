@@ -1,4 +1,4 @@
-import type { Material } from "../../core/audio";
+import type { Material } from "../../audio/sounds";
 
 /** Block ids stored in the world grid (one byte each). 0 is always air. */
 export const Block = {

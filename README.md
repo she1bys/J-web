@@ -50,8 +50,8 @@ Then open the address Vite prints (usually http://localhost:5173).
 │   ├── config/
 │   │   ├── game.ts            Title text and credits  ← rename the game here
 │   │   └── settings.ts        Player settings and their defaults
+│   ├── audio/                 Sound: engine (3D, reverb, limiter), sound designs, ambience
 │   ├── core/                  Small shared building blocks
-│   │   ├── audio.ts           Sound effects, synthesised in code
 │   │   ├── MusicPlayer.ts     Plays your songs, shuffled
 │   │   ├── songStore.ts       Songs added from a device (kept in the browser)
 │   │   ├── noise.ts           Terrain noise
@@ -135,6 +135,19 @@ Commands only use the `CommandContext` interface, so they'll also work on a mult
 
 To add one, see [docs/ADDING_A_MAP.md](docs/ADDING_A_MAP.md). Planning for online play is in
 [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md).
+
+## Sound
+
+All sound effects are designed in code (`src/audio/sounds.ts`) and rendered once when the game
+starts, several variations each, so repeated sounds like footsteps never sound identical.
+
+- **Materials:** wood, stone and glass ring at their own resonant frequencies; grass, sand, snow
+  and leaves are built from many tiny grains of crunch.
+- **3D:** blocks you break or place are heard from where they are, and footsteps from your feet.
+- **Mix:** light outdoor reverb, a limiter so nothing distorts, muffled sound under water.
+- **Ambience:** each map has its own soundscape: wind, birdsong by day, crickets at night, surf
+  on the islands (`ambience` in each map file).
+- **Settings:** separate volumes for sound effects, ambience and music.
 
 ## Music
 

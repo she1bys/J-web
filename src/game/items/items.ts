@@ -78,3 +78,27 @@ export function findItem(name: string): ItemDef | undefined {
   const k = snake(n);
   return ITEMS.find(i => i.key === k) ?? ITEMS.find(i => i.key === `${k}s`) ?? ITEMS.find(i => `${i.key}s` === k);
 }
+
+export type ItemCategory = "block" | "tool" | "food" | "material";
+
+export function itemCategory(def: ItemDef): ItemCategory {
+  if (def.tool) return "tool";
+  if (def.food !== undefined) return "food";
+  if (def.block !== undefined) return "block";
+  return "material";
+}
+
+const TIER = ["", "Wooden", "Stone"];
+
+/** One short line about an item, for the inventory's details card. */
+export function describeItem(def: ItemDef, dur?: number): string {
+  if (def.tool) {
+    const t = def.tool;
+    const uses = `${dur ?? t.durability}/${t.durability} uses`;
+    const what = t.type === "pickaxe" ? "stone and brick" : t.type === "axe" ? "wood" : "dirt, sand and snow";
+    return `${TIER[t.tier]} ${t.type} · mines ${what} faster · ${uses}`;
+  }
+  if (def.food !== undefined) return `Food · restores ${def.food / 2} hunger`;
+  if (def.block !== undefined) return "Block · tap USE to place";
+  return "Crafting material";
+}

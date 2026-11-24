@@ -12,6 +12,7 @@ export const meadow: MapDefinition = {
   size: { x: 80, y: 40, z: 80 },
   seed: 1,
   sky: { day: 0xbfe3ff, night: 0x0b1026, dusk: 0xffa27a },
+  ambience: { wind: 0.35, birds: 0.9, waves: 0, crickets: 0.8 },
   fog: [28, 70],
   hotbar: [Block.Grass, Block.Dirt, Block.Stone, Block.Wood, Block.Planks, Block.Leaves, Block.Glass, Block.Brick, Block.Rose],
   startTime: 0.12,

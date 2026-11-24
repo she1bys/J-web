@@ -14,8 +14,10 @@ export interface Settings {
   trail: boolean;
   /** Play the sunset movie before entering a map. */
   intro: boolean;
-  /** Sound effects (steps, mining, menus). */
-  sound: boolean;
+  /** Sound effects volume, 0–10 (0 = off): steps, mining, menus. */
+  sfxVolume: number;
+  /** Background soundscape volume, 0–10: wind, birds, waves, crickets. */
+  ambienceVolume: number;
   music: boolean;
   /** Music volume, 0–10. */
   musicVolume: number;
@@ -31,7 +33,8 @@ export const DEFAULT_SETTINGS: Settings = {
   retro: false,
   trail: true,
   intro: true,
-  sound: true,
+  sfxVolume: 8,
+  ambienceVolume: 6,
   music: true,
   musicVolume: 6,
   dayCycle: true,
@@ -43,14 +46,16 @@ const KEY = `${GAME.storagePrefix}.settings`;
 /**
  * Bump when a default changes and existing players should get the new value once.
  * v2: retro pixels became off by default.
+ * v3: the sound on/off switch became effects and ambience volumes.
  */
-const SETTINGS_VERSION = 2;
+const SETTINGS_VERSION = 3;
 
 export function loadSettings(): Settings {
-  const saved = readJSON<Partial<Settings> & { version?: number }>(KEY, {});
-  const { version, ...rest } = saved;
+  const saved = readJSON<Partial<Settings> & { version?: number; sound?: boolean }>(KEY, {});
+  const { version, sound, ...rest } = saved;
   const settings = { ...DEFAULT_SETTINGS, ...rest };
   if ((version ?? 1) < 2) settings.retro = DEFAULT_SETTINGS.retro;
+  if ((version ?? 1) < 3 && sound === false) settings.sfxVolume = settings.ambienceVolume = 0;
   if (version !== SETTINGS_VERSION) saveSettings(settings);
   return settings;
 }

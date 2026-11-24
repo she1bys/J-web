@@ -136,6 +136,29 @@ export class Inventory {
     this.changed();
   }
 
+  /** Merge partial stacks and order the backpack by item (the hotbar is left as it is). */
+  sort(): void {
+    const items: ItemStack[] = [];
+    for (let i = Inventory.HOTBAR; i < Inventory.SIZE; i++) {
+      const s = this.slots[i];
+      if (s) items.push({ ...s });
+      this.slots[i] = null;
+    }
+    items.sort((a, b) => a.id - b.id || (b.dur ?? 0) - (a.dur ?? 0));
+    let k = Inventory.HOTBAR;
+    for (const s of items) {
+      const max = maxStack(s.id);
+      const prev = k > Inventory.HOTBAR ? this.slots[k - 1] : null;
+      if (prev && prev.id === s.id && max > 1 && prev.count < max) {
+        const n = Math.min(s.count, max - prev.count);
+        prev.count += n;
+        s.count -= n;
+      }
+      if (s.count > 0) this.slots[k++] = s;
+    }
+    this.changed();
+  }
+
   clear(): void {
     this.slots.fill(null);
     this.changed();
