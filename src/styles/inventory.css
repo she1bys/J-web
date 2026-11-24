@@ -37,7 +37,9 @@
   position: relative; width: var(--islot); height: var(--islot); padding: 4px;
   background: #f1f1f1; border: 2px solid var(--ink); cursor: pointer; touch-action: none;
 }
-.inv-slot:hover { background: #ffe1ec; }
+@media (hover: hover) {
+  .inv-slot:hover, .inv-recipe:hover { background: #ffe1ec; }
+}
 .inv-slot .icon, .h-slot .icon { display: block; width: 100%; height: 100%; image-rendering: pixelated; pointer-events: none; }
 
 /* Stack count and tool wear, shared with the hotbar */
@@ -74,7 +76,6 @@
   align-items: center; text-align: left; padding: 4px 6px; cursor: pointer;
   background: var(--paper); border: 2px solid var(--ink);
 }
-.inv-recipe:hover { background: #ffe1ec; }
 .inv-recipe:active { background: var(--ink); color: var(--paper); }
 .inv-recipe.no { opacity: .45; cursor: default; }
 .r-out { grid-row: 1 / span 2; position: relative; width: 34px; height: 34px; }

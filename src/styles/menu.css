@@ -32,7 +32,11 @@
   box-shadow: 4px 4px 0 var(--ink);
   cursor: pointer;
 }
-.btn:hover, .btn:focus-visible { background: var(--ink); color: var(--paper); outline: none; }
+.btn:focus-visible { background: var(--ink); color: var(--paper); outline: none; }
+/* Only on devices with a real hover (iPhones keep "hover" stuck after a tap) */
+@media (hover: hover) {
+  .btn:hover { background: var(--ink); color: var(--paper); }
+}
 .btn:active { transform: translate(4px, 4px); box-shadow: none; }
 .btn-detail { font-size: 10px; letter-spacing: .08em; opacity: .7; }
 .pop { animation: place .18s steps(3) both; }
@@ -80,7 +84,8 @@
 .field-label { font-size: 10px; letter-spacing: .2em; }
 .field input {
   height: 44px; padding: 0 10px;
-  font: 15px var(--font-pixel); color: var(--ink);
+  /* 16px or more stops iPhones zooming in when the field is tapped */
+  font: 16px var(--font-pixel); color: var(--ink);
   background: var(--paper); border: 3px solid var(--ink); box-shadow: 4px 4px 0 var(--ink); outline: none;
   -webkit-user-select: text; user-select: text;
 }

@@ -6,6 +6,8 @@
   font-family: var(--font-pixel); pointer-events: none;
 }
 .cmd.open { pointer-events: auto; }
+/* While the on-screen keyboard is up, sit just above it (set from code). */
+.cmd.above-keyboard { bottom: calc(var(--kb) + 8px); }
 .cmd-log {
   max-height: 180px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px;
   scrollbar-width: none;
@@ -33,7 +35,7 @@
 .cmd-form[hidden] { display: none; }
 .cmd-input {
   flex: 1; min-width: 0; height: 40px; padding: 0 10px;
-  font: 14px var(--font-pixel); color: var(--ink);
+  font: 16px var(--font-pixel); color: var(--ink); /* 16px+ avoids iPhone zoom on focus */
   background: var(--paper); border: 3px solid var(--ink); outline: none;
   -webkit-user-select: text; user-select: text;
 }

@@ -46,8 +46,19 @@ export class CommandBar {
     this.input.addEventListener("keyup", e => e.stopPropagation());
   }
 
+  /** Keep the bar above the on-screen keyboard (iPhone Safari doesn't resize the page for it). */
+  private followKeyboard = (): void => {
+    const vv = window.visualViewport;
+    const rotated = !!this.root.closest(".rotated");
+    const kb = vv && !rotated ? Math.max(0, innerHeight - vv.height - vv.offsetTop) : 0;
+    this.root.classList.toggle("above-keyboard", kb > 40);
+    this.root.style.setProperty("--kb", `${kb}px`);
+  };
+
   open(prefill = ""): void {
     this.isOpen = true;
+    window.visualViewport?.addEventListener("resize", this.followKeyboard);
+    window.visualViewport?.addEventListener("scroll", this.followKeyboard);
     this.form.hidden = false;
     this.root.classList.add("open");
     this.input.value = prefill;
@@ -62,7 +73,9 @@ export class CommandBar {
     this.isOpen = false;
     this.form.hidden = true;
     this.suggestEl.hidden = true;
-    this.root.classList.remove("open");
+    this.root.classList.remove("open", "above-keyboard");
+    window.visualViewport?.removeEventListener("resize", this.followKeyboard);
+    window.visualViewport?.removeEventListener("scroll", this.followKeyboard);
     this.input.blur();
     this.onClose();
   }

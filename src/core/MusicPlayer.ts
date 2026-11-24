@@ -83,9 +83,8 @@ export class MusicPlayer {
 
   /** Call from a tap/click/key: browsers only allow sound after a user gesture. */
   unlock(): void {
-    if (this.unlocked) return;
     this.unlocked = true;
-    this.apply();
+    if (this.audio.paused) this.apply();
   }
 
   setPlaying(on: boolean): void {

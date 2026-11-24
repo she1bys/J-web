@@ -7,11 +7,14 @@ export function blockZoomGestures(): void {
   // Safari's pinch gesture events
   document.addEventListener("gesturestart", stop, { passive: false });
   document.addEventListener("gesturechange", stop, { passive: false });
-  // Two-finger moves (pinch) everywhere else
+  // Two-finger moves (pinch) everywhere, and any swipe on the game itself, so Safari doesn't
+  // scroll, bounce or pop its toolbar up. Lists that scroll (recipes, items, menus) still can.
   document.addEventListener(
     "touchmove",
     e => {
-      if (e.touches.length > 1) e.preventDefault();
+      const t = e.target as HTMLElement;
+      const scrollable = t.closest?.(".menu, .inv-recipes, .inv-palette, .cmd-log, .cmd-suggest, .inv-body");
+      if (e.touches.length > 1 || (t.closest?.(".play-layer") && !scrollable)) e.preventDefault();
     },
     { passive: false },
   );

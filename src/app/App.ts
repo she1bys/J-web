@@ -3,7 +3,8 @@ import { loadSettings, saveSettings, type Settings } from "../config/settings";
 import { Sfx } from "../core/audio";
 import { MusicPlayer } from "../core/MusicPlayer";
 import { addDeviceSongs, clearDeviceSongs } from "../core/songStore";
-import { isTouchDevice, prefersReducedMotion } from "../core/timeline";
+import { isIOS, isStandalone, isTouchDevice, prefersReducedMotion } from "../core/timeline";
+import { readJSON, writeJSON } from "../core/storage";
 import { Viewport } from "../core/viewport";
 import { SunsetIntro } from "../cinematic/SunsetIntro";
 import { Particles } from "../title/Particles";
@@ -17,7 +18,7 @@ import {
 } from "../game/world/WorldStore";
 import type { Game } from "../game/Game";
 
-type Screen = "main" | "worlds" | "world" | "create" | "confirm-delete" | "settings" | "music" | "howto" | "credits" | "pause";
+type Screen = "main" | "install" | "worlds" | "world" | "create" | "confirm-delete" | "settings" | "music" | "howto" | "credits" | "pause";
 
 /** "just now", "5 min ago", "3 days ago" */
 const ago = (t: number): string => {
@@ -144,8 +145,10 @@ export class App {
       this.sfx.unlock();
       this.music.unlock();
     };
-    addEventListener("pointerdown", unlock, { capture: true });
-    addEventListener("keydown", unlock, { capture: true });
+    // iPhones may only allow audio when a tap ends, so listen to the whole tap.
+    for (const ev of ["pointerdown", "touchend", "click", "keydown"]) addEventListener(ev, unlock, { capture: true });
+    // iPhones can close background tabs without warning: save when leaving.
+    addEventListener("pagehide", () => this.game?.pause());
     addEventListener("pointerdown", e => {
       if (this.intro.playing) {
         this.intro.skip();
@@ -216,6 +219,19 @@ export class App {
         button("How to play", () => this.go("howto")),
         button("Settings", () => this.go("settings")),
         button("Credits", () => this.go("credits")),
+        // iPhones only allow true fullscreen for sites added to the Home Screen.
+        ...(this.showInstallTip ? [button("Play fullscreen", () => this.go("install"), { detail: "Add to Home Screen" })] : []),
+      ],
+      install: () => [
+        title("Fullscreen"),
+        text("1. Tap the Share button<br>2. Choose Add to Home Screen<br>3. Open Gracia from there"),
+        text("It opens fullscreen like an app,<br>with your worlds kept."),
+        button("Got it", () => {
+          writeJSON(`${GAME.storagePrefix}.installTipDone`, true);
+          this.stack = ["main"];
+          this.render();
+        }),
+        button("Back", () => this.back()),
       ],
       worlds: () => {
         const worlds = listWorlds();
@@ -336,6 +352,10 @@ export class App {
         button("Save and quit", () => this.toMainMenu()),
       ],
     };
+  }
+
+  private get showInstallTip(): boolean {
+    return isIOS() && !isStandalone() && !readJSON(`${GAME.storagePrefix}.installTipDone`, false);
   }
 
   private get menu(): Menu {

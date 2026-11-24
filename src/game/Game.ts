@@ -4,6 +4,7 @@ import type { Sfx } from "../core/audio";
 import { createRng, type Rng } from "../core/random";
 import type { Viewport } from "../core/viewport";
 import { isTouchDevice } from "../core/timeline";
+import { AdaptiveQuality } from "../core/quality";
 import { getMap, type MapDefinition, type Vec3 } from "./maps";
 import { MODE_NAMES, MODE_RULES, type GameMode, type ModeRules } from "./modes";
 import { World } from "./world/World";
@@ -117,6 +118,7 @@ export class Game {
   private disposed = false;
   private lastT = 0;
   private colors = new Map<number, [number, number, number]>();
+  private quality = new AdaptiveQuality();
   private unsubscribers: (() => void)[] = [];
 
   constructor(opts: GameOptions) {
@@ -350,6 +352,7 @@ export class Game {
     this.lastT = now;
     this.update(dt);
     this.renderer.render(this.scene, this.camera);
+    if (this.quality.sample(dt)) this.resize();
   };
 
   private update(dt: number): void {
@@ -753,9 +756,11 @@ export class Game {
     const h = this.opts.viewport.height;
     const dpr = devicePixelRatio || 1;
     // Retro mode renders at low resolution and scales up with hard pixel edges.
-    const ratio = this.settings.retro
+    const base = this.settings.retro
       ? Math.min(1, Math.max(320, w / 2) / w)
       : Math.min(dpr, this.touch ? 1.5 : 2);
+    // Adaptive quality lowers it further if frames are slow (never below ~240 pixels wide).
+    const ratio = Math.max(240 / w, base * this.quality.scale);
     this.renderer.setPixelRatio(ratio);
     this.renderer.setSize(w, h);
     this.camera.aspect = w / h;

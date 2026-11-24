@@ -21,3 +21,15 @@ export const prefersReducedMotion = () =>
   typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 export const isTouchDevice = () => typeof matchMedia === "function" && matchMedia("(pointer: coarse)").matches;
+
+/** iPhone or iPad (iPadOS reports itself as a Mac with touch). */
+export const isIOS = () =>
+  typeof navigator !== "undefined" &&
+  (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
+
+/** Opened from the Home Screen (fullscreen app) rather than in a browser tab. */
+export const isStandalone = () =>
+  typeof matchMedia === "function" &&
+  (matchMedia("(display-mode: standalone)").matches ||
+    matchMedia("(display-mode: fullscreen)").matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true);
