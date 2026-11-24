@@ -28,7 +28,7 @@ export const DEFAULT_SETTINGS: Settings = {
   camera: "first",
   look: 5,
   invertY: false,
-  retro: true,
+  retro: false,
   trail: true,
   intro: true,
   sound: true,
@@ -40,11 +40,21 @@ export const DEFAULT_SETTINGS: Settings = {
 
 const KEY = `${GAME.storagePrefix}.settings`;
 
+/**
+ * Bump when a default changes and existing players should get the new value once.
+ * v2: retro pixels became off by default.
+ */
+const SETTINGS_VERSION = 2;
+
 export function loadSettings(): Settings {
-  const saved = readJSON<Partial<Settings>>(KEY, {});
-  return { ...DEFAULT_SETTINGS, ...saved };
+  const saved = readJSON<Partial<Settings> & { version?: number }>(KEY, {});
+  const { version, ...rest } = saved;
+  const settings = { ...DEFAULT_SETTINGS, ...rest };
+  if ((version ?? 1) < 2) settings.retro = DEFAULT_SETTINGS.retro;
+  if (version !== SETTINGS_VERSION) saveSettings(settings);
+  return settings;
 }
 
 export function saveSettings(settings: Settings): void {
-  writeJSON(KEY, settings);
+  writeJSON(KEY, { ...settings, version: SETTINGS_VERSION });
 }

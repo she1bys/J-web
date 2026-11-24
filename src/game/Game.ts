@@ -149,7 +149,8 @@ export class Game {
     this.canvas = document.createElement("canvas");
     this.canvas.className = "g-view";
     opts.container.appendChild(this.canvas);
-    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: false, powerPreference: "high-performance" });
+    // Smooth edges unless the chunky retro look is on (chosen when the world is opened).
+    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: !this.settings.retro, powerPreference: "high-performance" });
     this.atlas = paintAtlas();
     this.texture = new THREE.CanvasTexture(this.atlas);
     this.texture.magFilter = this.texture.minFilter = THREE.NearestFilter;
@@ -763,6 +764,7 @@ export class Game {
     const ratio = Math.max(240 / w, base * this.quality.scale);
     this.renderer.setPixelRatio(ratio);
     this.renderer.setSize(w, h);
+    this.canvas.classList.toggle("retro", this.settings.retro);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
   };
