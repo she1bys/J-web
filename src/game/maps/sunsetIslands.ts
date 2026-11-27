@@ -2,6 +2,7 @@ import { fbm2 } from "../../core/noise";
 import { Block } from "../world/blocks";
 import type { MapDefinition } from "./types";
 import { palmTree } from "./shared/structures";
+import { bedrock, carveCaves, placeOres } from "./shared/underground";
 
 /** Sandy islands in a warm sea, always close to golden hour. Swim between them. */
 export const sunsetIslands: MapDefinition = {
@@ -34,6 +35,10 @@ export const sunsetIslands: MapDefinition = {
         for (let y = h + 1; y <= SEA; y++) w.set(x, y, z, Block.Water);
       }
     }
+
+    carveCaves(w, seed, { minDepth: 3, avoid: (x, z) => Math.hypot(x - cx, z - cz) < 10 });
+    placeOres(w, rng);
+    bedrock(w, rng);
 
     // Start on dry land nearest the middle of the map.
     let spawn = { x: Math.floor(cx), z: Math.floor(cz) };

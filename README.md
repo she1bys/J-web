@@ -69,7 +69,7 @@ Then open the address Vite prints (usually http://localhost:5173).
 │   └── game/
 │       ├── Game.ts            Runs a world: blocks, player, inventory, survival, commands, saving
 │       ├── modes.ts           Survival / creative rules
-│       ├── world/             Blocks, the world grid, chunk meshing, raycasting, saved worlds
+│       ├── world/             Blocks, world grid, lighting, chunk meshing, raycasting, saves, world files
 │       ├── items/             Item list, icons, inventory, crafting recipes, block drops
 │       ├── survival/          Health, hunger and air
 │       ├── entities/          Dropped items lying in the world
@@ -99,7 +99,16 @@ including everything built, your inventory, health and position.
 | Flying | No | Double-tap jump, or `/fly` |
 | Inventory | Backpack + crafting list | Backpack + every item |
 
-Eat apples (they drop from leaves) by selecting them and pressing *use*.
+### Survival guide
+
+1. Punch trees for **wood** → craft **planks**, **sticks** and a **crafting table** (by hand).
+2. Next to the table: **wooden pickaxe** → mine stone for **cobblestone** → **stone tools** and a **furnace**.
+3. Dig into caves for **coal** and **iron ore**. Coal + stick = **torches** (caves are dark at night and underground).
+4. In the furnace (fuel: coal or planks): iron ore → **iron ingots** → **iron tools**; sand → glass; raw meat → cooked.
+5. **Farming:** a hoe turns grass or dirt into farmland; plant **seeds** (they drop from grass); ripe wheat → **bread**.
+6. **Saplings** (from leaves) grow into trees. **Chests** store 27 stacks. A **bed** sets your respawn point and skips the night.
+
+Food: apples, bread, cooked meat. Select it and press *use* to eat.
 Switch any time with `/gamemode survival` or `/gamemode creative`.
 
 ## Commands

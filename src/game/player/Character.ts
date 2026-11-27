@@ -53,6 +53,13 @@ export class Character {
     this.root.add(m);
   }
 
+  /** Darken the model in caves and at night (0–1). */
+  setLight(level: number): void {
+    this.root.traverse(o => {
+      if (o instanceof THREE.Mesh) (o.material as THREE.MeshBasicMaterial).color.setScalar(level);
+    });
+  }
+
   /** Swing arms and legs in proportion to speed; arms raise while swimming or flying. */
   animate(dt: number, speed: number, airborne: boolean): void {
     const moving = speed > 0.5;

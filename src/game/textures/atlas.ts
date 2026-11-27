@@ -4,7 +4,7 @@ import { Tile, type TileId } from "../world/blocks";
 /** All block textures are 16×16 pixel art painted in code into one atlas image. */
 export const TILE_SIZE = 16;
 export const ATLAS_COLS = 8;
-export const ATLAS_ROWS = 4;
+export const ATLAS_ROWS = 8;
 
 const HEART = [".##.##.", "#######", "#######", ".#####.", "..###..", "...#..."];
 
@@ -108,6 +108,106 @@ export function paintAtlas(): HTMLCanvasElement {
     if (x < 2 || x > 13 || y < 2 || y > 13) return "#2a2a2a";
     if (x === 7 || x === 8 || y === 7 || y === 8) return "#2a2a2a";
     return (x + y) % 5 === 0 ? "#fff3b0" : "#ffd25e";
+  });
+
+  /* ---------- Underground, stations, farming ---------- */
+  // Ores: stone with clusters of coloured specks
+  const ore = (t: TileId, specks: readonly string[], seed: number) => {
+    const rr = createRng(seed);
+    const spots: [number, number][] = Array.from({ length: 6 }, () => [1 + Math.floor(rr() * 13), 1 + Math.floor(rr() * 13)]);
+    paint(t, (x, y) => {
+      for (const [sx, sy] of spots) {
+        const d = Math.abs(x - sx) + Math.abs(y - sy);
+        if (d === 0) return specks[0];
+        if (d === 1 && (x + y + sx) % 2 === 0) return specks[1];
+      }
+      return pick(ST);
+    });
+  };
+  ore(Tile.CoalOre, ["#1c1c1c", "#3a3a3a"], 21);
+  ore(Tile.IronOre, ["#d9a37a", "#b5794f"], 22);
+  paint(Tile.Bedrock, () => pick(["#3b3b3b", "#545454", "#2a2a2a", "#6a6a6a", "#3b3b3b"]));
+
+  // Crafting table: a planked top with a grid, sides with hanging tools
+  paint(Tile.TableTop, (x, y) => {
+    if (x === 0 || y === 0 || x === 15 || y === 15) return "#5a3a20";
+    if (x === 5 || x === 10 || y === 5 || y === 10) return "#7d5a33";
+    return pick(PL);
+  });
+  paint(Tile.TableSide, (x, y) => {
+    if (y < 3) return y === 2 ? "#5a3a20" : pick(PL);
+    if ((x === 3 || x === 4) && y > 4 && y < 13) return "#5e5e5e"; // a hammer handle and head
+    if (y === 5 && x > 1 && x < 7) return "#9a9a9a";
+    if (x === 11 && y > 4 && y < 13) return "#5a3a20"; // a saw
+    if (x > 9 && x < 15 && y > 6 && y < 9) return "#b0b0b0";
+    return x % 5 === 0 ? "#5a3a20" : "#8a6240";
+  });
+
+  // Furnace: dark cobble with a glowing mouth on the front
+  const FU = ["#6f6f6f", "#7d7d7d", "#5e5e5e"];
+  paint(Tile.FurnaceSide, (x, y) => ((x + (y >> 2)) % 6 === 0 || y % 5 === 4 ? "#4a4a4a" : pick(FU)));
+  paint(Tile.FurnaceTop, (x, y) => (x === 0 || y === 0 || x === 15 || y === 15 ? "#4a4a4a" : pick(FU)));
+  paint(Tile.FurnaceFront, (x, y) => {
+    if (x > 3 && x < 12 && y > 7 && y < 13) return y > 10 ? (x % 2 ? "#ff9a2e" : "#ffd15e") : "#1e1e1e";
+    if (x > 3 && x < 12 && y > 2 && y < 6) return "#2a2a2a";
+    return (x + (y >> 2)) % 6 === 0 ? "#4a4a4a" : pick(FU);
+  });
+
+  // Chest: planks with darker bands and a latch on the front
+  const CH = ["#a4743f", "#b5844b", "#9a6a36"];
+  paint(Tile.ChestSide, (x, y) => (x === 0 || x === 15 || y === 0 || y === 15 || y === 6 ? "#5a3a20" : pick(CH)));
+  paint(Tile.ChestTop, (x, y) => (x === 0 || x === 15 || y === 0 || y === 15 ? "#5a3a20" : pick(CH)));
+  paint(Tile.ChestFront, (x, y) => {
+    if (x > 6 && x < 9 && y > 4 && y < 9) return y === 6 ? "#2a2a2a" : "#e0c060";
+    return x === 0 || x === 15 || y === 0 || y === 15 || y === 6 ? "#5a3a20" : pick(CH);
+  });
+
+  // Torch: a stick with a bright flame (transparent around it)
+  paint(Tile.Torch, (x, y) => {
+    if (x < 7 || x > 8) return null;
+    if (y < 3) return null;
+    if (y === 3) return x === 7 ? "#fff3b0" : "#ffd15e";
+    if (y === 4) return "#ffb030";
+    if (y === 5) return "#ff7a1a";
+    return y % 3 === 0 ? "#5a3a20" : "#8a6240";
+  });
+
+  // Farmland: tilled rows of dark soil
+  paint(Tile.FarmlandTop, (_x, y) => (y % 4 === 0 ? "#4a2f1c" : y % 4 === 1 ? "#6a4428" : pick(["#5a3a22", "#62402a"])));
+
+  // Wheat growing in four stages, from green shoots to golden ears
+  const wheat = (t: TileId, h: number, color: string, ears: boolean) =>
+    paint(t, (x, y) => {
+      const stalk = x % 3 === 1 && y >= 16 - h;
+      if (!stalk) return null;
+      if (ears && y < 16 - h + 4) return (x + y) % 2 ? "#e8c45a" : "#c9a23e";
+      return y % 4 === 0 ? "#3f7f2f" : color;
+    });
+  wheat(Tile.Wheat0, 4, "#5fae3e", false);
+  wheat(Tile.Wheat1, 8, "#5fae3e", false);
+  wheat(Tile.Wheat2, 12, "#8fb84a", false);
+  wheat(Tile.Wheat3, 15, "#c9b45a", true);
+
+  // Saplings: a thin stem and a few leaves
+  const sapling = (t: TileId, leaf: readonly string[]) =>
+    paint(t, (x, y) => {
+      if (x === 7 && y > 7) return "#6a4428";
+      const d = Math.hypot(x - 7.5, (y - 6) * 1.2);
+      if (d < 5 && (x + y) % 3 !== 0) return pick(leaf);
+      return null;
+    });
+  sapling(Tile.Sapling, LE);
+  sapling(Tile.PineSapling, PI);
+
+  // Bed: a pink blanket with a white pillow
+  paint(Tile.BedTop, (x, y) => {
+    if (x === 0 || x === 15) return "#5a3a20";
+    if (y < 5) return y === 4 ? "#dcdcdc" : "#f4f4f4";
+    return (x + y) % 5 === 0 ? "#ff8ab8" : "#ff6fa5";
+  });
+  paint(Tile.BedSide, (x, y) => {
+    if (y > 8) return y > 12 && (x < 2 || x > 13) ? "#5a3a20" : y > 12 ? null : "#8a6240";
+    return y < 2 ? "#ffd6e6" : "#ff6fa5";
   });
 
   // Crack overlays for mining: more cracks per stage, transparent elsewhere.

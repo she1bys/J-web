@@ -3,6 +3,7 @@ import { Block } from "../world/blocks";
 import type { MapDefinition } from "./types";
 import { cactus, palmTree, pyramid } from "./shared/structures";
 import { findDrySpawn } from "./shared/spawn";
+import { bedrock, carveCaves, placeOres } from "./shared/underground";
 
 /** Sand dunes, cacti, a palm oasis and a stepped pyramid. */
 export const desert: MapDefinition = {
@@ -43,6 +44,11 @@ export const desert: MapDefinition = {
       }
     }
 
+    carveCaves(w, seed, {
+      avoid: (x, z) => Math.hypot(x - spawn.x, z - spawn.z) < 8 || Math.max(Math.abs(x - pyr.x), Math.abs(z - pyr.z)) < pyr.half + 3 || Math.hypot(x - oasis.x, z - oasis.z) < oasis.r + 4,
+    });
+    placeOres(w, rng);
+    bedrock(w, rng);
     pyramid(w, pyr.x, 11, pyr.z, pyr.half);
 
     for (let k = 0; k < 9; k++) {

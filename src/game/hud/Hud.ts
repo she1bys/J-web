@@ -35,6 +35,7 @@ export class Hud {
     this.root.className = "hud";
     this.root.innerHTML = `
       <div class="h-hurt"></div>
+      <div class="h-sleep"></div>
       <div class="h-cross"></div>
       <div class="h-fps" hidden></div>
       <div class="h-flying" hidden>Flying</div>
@@ -126,6 +127,14 @@ export class Hud {
       (el as HTMLElement).style.backgroundImage = i >= 10 - bubbles ? `url(${bubbleIcon()})` : "none";
     });
     this.hearts.classList.toggle("low", health <= 6);
+  }
+
+  /** Fade to black and back (sleeping through the night). */
+  sleepFade(): void {
+    const el = this.root.querySelector<HTMLElement>(".h-sleep")!;
+    el.classList.remove("on");
+    void el.offsetWidth;
+    el.classList.add("on");
   }
 
   flashHurt(): void {

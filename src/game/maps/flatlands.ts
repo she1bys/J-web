@@ -17,7 +17,7 @@ export const flatlands: MapDefinition = {
 
   generate(w) {
     const GROUND = 4;
-    w.fill(0, 0, 0, w.sx - 1, 0, w.sz - 1, Block.Stone);
+    w.fill(0, 0, 0, w.sx - 1, 0, w.sz - 1, Block.Bedrock);
     w.fill(0, 1, 0, w.sx - 1, GROUND - 1, w.sz - 1, Block.Dirt);
     w.fill(0, GROUND, 0, w.sx - 1, GROUND, w.sz - 1, Block.Grass);
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Inventory } from "../src/game/items/Inventory";
 import { Item, findItem, itemDef } from "../src/game/items/items";
-import { RECIPES, craft } from "../src/game/items/recipes";
+import { RECIPES, craft, hasIngredients } from "../src/game/items/recipes";
 import { blockDrops, miningInfo } from "../src/game/items/drops";
 import { Block } from "../src/game/world/blocks";
 import { createRng } from "../src/core/random";
@@ -69,15 +69,28 @@ describe("crafting", () => {
   it("turns wood into planks into sticks into a pickaxe", () => {
     const inv = new Inventory();
     inv.add(Block.Wood, 2);
-    const find = (id: number) => RECIPES.find(r => r.result.id === id && r.ingredients.every(i => inv.count(i.id) >= i.count))!;
+    const find = (id: number) => RECIPES.find(r => r.result.id === id && hasIngredients(inv, r))!;
     expect(craft(inv, find(Block.Planks))).toBe(true);
     expect(craft(inv, find(Block.Planks))).toBe(true);
     expect(inv.count(Block.Planks)).toBe(8);
     expect(craft(inv, find(Item.Stick))).toBe(true);
-    expect(craft(inv, find(Item.WoodenPickaxe))).toBe(true);
+    expect(craft(inv, find(Item.WoodenPickaxe))).toBe(false); // needs a crafting table
+    expect(craft(inv, find(Item.WoodenPickaxe), new Set(["hand", "table"]))).toBe(true);
     expect(inv.count(Item.WoodenPickaxe)).toBe(1);
     expect(inv.count(Item.Stick)).toBe(2);
     expect(inv.count(Block.Planks)).toBe(3);
+  });
+
+  it("smelts iron only next to a furnace, with fuel", () => {
+    const inv = new Inventory();
+    inv.add(Block.IronOre, 1);
+    inv.add(Item.Coal, 1);
+    const iron = RECIPES.find(r => r.result.id === Item.IronIngot && r.ingredients.some(i => i.id === Item.Coal))!;
+    expect(iron.station).toBe("furnace");
+    expect(craft(inv, iron, new Set(["hand", "table"]))).toBe(false);
+    expect(craft(inv, iron, new Set(["hand", "furnace"]))).toBe(true);
+    expect(inv.count(Item.IronIngot)).toBe(1);
+    expect(inv.count(Item.Coal)).toBe(0);
   });
 
   it("refuses without ingredients and changes nothing", () => {
@@ -110,9 +123,23 @@ describe("mining and drops", () => {
     expect(miningInfo(Block.Dirt, axe).seconds).toBe(miningInfo(Block.Dirt, undefined).seconds);
   });
 
+  it("iron ore needs at least a stone pickaxe", () => {
+    expect(miningInfo(Block.IronOre, itemDef(Item.WoodenPickaxe)!.tool).drops).toBe(false);
+    expect(miningInfo(Block.IronOre, itemDef(Item.StonePickaxe)!.tool).drops).toBe(true);
+    expect(miningInfo(Block.CoalOre, itemDef(Item.WoodenPickaxe)!.tool).drops).toBe(true);
+    expect(miningInfo(Block.Bedrock, itemDef(Item.IronPickaxe)!.tool).seconds).toBe(Infinity);
+  });
+
+  it("ripe wheat drops wheat and seeds; unripe only seeds", () => {
+    const rng = createRng(2);
+    expect(blockDrops(Block.Wheat, rng, 3).map(d => d.id)).toEqual([Item.Wheat, Item.Seeds]);
+    expect(blockDrops(Block.Wheat, rng, 1)).toEqual([{ id: Item.Seeds, count: 1 }]);
+    expect(blockDrops(Block.CoalOre, rng)).toEqual([{ id: Item.Coal, count: 1 }]);
+  });
+
   it("grass drops dirt, stone drops cobblestone, glass drops nothing", () => {
     const rng = createRng(1);
-    expect(blockDrops(Block.Grass, rng)).toEqual([{ id: Block.Dirt, count: 1 }]);
+    expect(blockDrops(Block.Grass, rng)[0]).toEqual({ id: Block.Dirt, count: 1 });
     expect(blockDrops(Block.Stone, rng)).toEqual([{ id: Block.Cobble, count: 1 }]);
     expect(blockDrops(Block.Glass, rng)).toEqual([]);
   });

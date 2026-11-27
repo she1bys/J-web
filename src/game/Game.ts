@@ -9,7 +9,8 @@ import { AdaptiveQuality } from "../core/quality";
 import { getMap, type MapDefinition, type Vec3 } from "./maps";
 import { MODE_NAMES, MODE_RULES, type GameMode, type ModeRules } from "./modes";
 import { World } from "./world/World";
-import { Block, blockDef } from "./world/blocks";
+import { Block, blockDef, facingToward } from "./world/blocks";
+import { Lighting, brightness } from "./world/Lighting";
 import { ChunkRenderer } from "./world/ChunkRenderer";
 import { raycast, type RayHit } from "./world/raycast";
 import {
@@ -28,6 +29,8 @@ import { BlockSelection } from "./effects/BlockSelection";
 import { ItemEntities } from "./entities/ItemEntities";
 import { Inventory, type ItemStack } from "./items/Inventory";
 import { itemDef } from "./items/items";
+import type { Station } from "./items/recipes";
+import { oakTree, pineTree } from "./maps/shared/structures";
 import { blockDrops, miningInfo } from "./items/drops";
 import { Vitals } from "./survival/Vitals";
 import { createCommands } from "./commands/builtin";
@@ -121,6 +124,12 @@ export class Game {
   private colors = new Map<number, [number, number, number]>();
   private quality = new AdaptiveQuality();
   private ambience: Ambience;
+  private lighting: Lighting;
+  /** Chest contents, keyed by block index. */
+  private chests = new Map<number, Inventory>();
+  /** Crops and saplings that are still growing (block indices). */
+  private growing = new Set<number>();
+  private growTimer = 0;
   private unsubscribers: (() => void)[] = [];
 
   constructor(opts: GameOptions) {
@@ -146,6 +155,16 @@ export class Game {
     else if (this.mode === "creative") this.map.hotbar.forEach((id, i) => this.inventory.set(i, { id, count: 1 }));
     if (save?.vitals) Object.assign(this.vitals, save.vitals);
     this.slot = save?.selectedSlot ?? 0;
+    for (const [k, data] of Object.entries(save?.chests ?? {})) {
+      const inv = new Inventory(27);
+      inv.load(data);
+      this.chests.set(Number(k), inv);
+    }
+    // Light the world, and find anything still growing.
+    this.lighting = new Lighting(this.world);
+    this.lighting.computeAll();
+    const { data } = this.world;
+    for (let i = 0; i < data.length; i++) if (data[i] === Block.Wheat || data[i] === Block.Sapling) this.growing.add(i);
 
     // Rendering
     this.canvas = document.createElement("canvas");
@@ -325,13 +344,14 @@ export class Game {
 
   /* ---------- Screens ---------- */
 
-  private openInventory(): void {
+  private openInventory(chest?: Inventory): void {
     if (this.paused || this.uiOpen) return;
     this.setControlsEnabled(false);
     this.kbm?.releaseLock();
     this.hud.showHint(false);
-    this.invScreen.open(this.mode, this.slot);
+    this.invScreen.open(this.mode, this.slot, this.nearbyStations(), chest);
   }
+
 
   private openCommands(prefill: string): void {
     if (this.paused || this.uiOpen) return;
@@ -428,13 +448,22 @@ export class Game {
     if (settings.dayCycle && this.rules.dayCycle) this.time = (this.time + dt / DAY_SECONDS) % 1;
     this.sky.update(this.time, this.camera, this.rig.underwater());
     const light = this.sky.light;
-    this.chunks.setLight(light);
+    // How bright the open sky is (0 night … 1 day); caves and shade come from the light map.
+    const daylight = 0.16 + 0.84 * Math.max(0, Math.min(1, (light - 0.3) / 0.7));
+    this.chunks.setDaylight(daylight);
+    const here = this.lightAt(player.eye.x, player.eye.y, player.eye.z, daylight);
     this.clouds.update(dt, light);
-    this.debris.update(dt, light);
-    this.held.update(dt, player.onGround ? player.speed : 0, light);
+    this.debris.update(dt, here);
+    this.held.update(dt, player.onGround ? player.speed : 0, here);
+    this.character.setLight(this.lightAt(player.pos.x, player.pos.y + 0.5, player.pos.z, daylight));
+    this.growTimer += dt;
+    if (this.growTimer >= 1) {
+      this.growTimer = 0;
+      this.grow();
+    }
 
     // Dropped items fly into the inventory when you walk over them
-    this.items.update(dt, player.pos, light, stack => {
+    this.items.update(dt, player.pos, here, stack => {
       if (!alive) return stack.count;
       const left = this.inventory.add(stack.id, stack.count, stack.dur);
       if (left < stack.count) {
@@ -558,24 +587,101 @@ export class Game {
     return c;
   }
 
-  /** Change blocks and refresh the meshes around them. Every world edit goes through here. */
-  private editBlocks(cells: Iterable<[number, number, number, number]>): number {
+  /**
+   * Change blocks and refresh meshes and light around them. Every world edit goes through here
+   * (cells are [x, y, z, id] or [x, y, z, id, meta]).
+   */
+  private editBlocks(cells: Iterable<[number, number, number, number, number?]>): number {
+    const w = this.world;
     let n = 0;
-    for (const [x, y, z, id] of cells) {
-      if (!this.world.inBounds(x, y, z) || this.world.get(x, y, z) === id) continue;
-      this.world.set(x, y, z, id);
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity;
+    const removed: [number, number, number][] = [];
+    for (const [x, y, z, id, meta = 0] of cells) {
+      if (!w.inBounds(x, y, z)) continue;
+      const i = w.index(x, y, z);
+      if (w.data[i] === id && w.meta[i] === meta) continue;
+      const was = w.data[i];
+      w.set(x, y, z, id, meta);
+      // Bookkeeping: growing plants and chest contents follow the blocks.
+      if (id === Block.Wheat || id === Block.Sapling) this.growing.add(i);
+      else this.growing.delete(i);
+      if (was === Block.Chest && id !== Block.Chest) this.spillChest(i, x, y, z);
+      if (!blockDef(id)?.solid) removed.push([x, y, z]);
       this.chunks.markDirty(x, z);
+      x0 = Math.min(x0, x); z0 = Math.min(z0, z); x1 = Math.max(x1, x); z1 = Math.max(z1, z);
       n++;
     }
-    if (n) {
-      this.chunks.flush();
-      this.dirty = true;
-    }
+    if (!n) return 0;
+    this.chunks.markChunks(this.lighting.updateBox(x0, z0, x1, z1));
+    this.chunks.flush();
+    this.dirty = true;
+    // Torches and plants fall off when the block holding them up goes.
+    for (const [x, y, z] of removed) this.checkSupport(x, y + 1, z);
     return n;
+  }
+
+  /** Break a torch or plant at (x, y, z) if nothing solid is under it any more. */
+  private checkSupport(x: number, y: number, z: number): void {
+    const id = this.world.get(x, y, z);
+    const def = blockDef(id);
+    if (!def?.needsSupport) return;
+    const below = this.world.get(x, y - 1, z);
+    const ok = id === Block.Wheat ? below === Block.Farmland : blockDef(below)?.solid;
+    if (ok) return;
+    const meta = this.world.getMeta(x, y, z);
+    this.editBlocks([[x, y, z, Block.Air]]);
+    if (this.rulesNow.drops) for (const d of blockDrops(id, this.rng, meta)) this.items.spawn(d, x + 0.5, y + 0.3, z + 0.5);
+  }
+
+  private spillChest(i: number, x: number, y: number, z: number): void {
+    const inv = this.chests.get(i);
+    this.chests.delete(i);
+    if (!inv) return;
+    for (const s of inv.slots) if (s) this.items.spawn(s, x + 0.5, y + 0.5, z + 0.5);
+  }
+
+  /** Brightness (0–1) at a point: the brighter of open sky (scaled by daylight) and torchlight. */
+  private lightAt(x: number, y: number, z: number, daylight: number): number {
+    const fx = Math.floor(x), fy = Math.floor(y), fz = Math.floor(z);
+    const sky = brightness(this.world.skyLight(fx, fy, fz)) * daylight;
+    const blk = brightness(this.world.blockLight(fx, fy, fz));
+    return Math.max(0.06, sky, blk);
+  }
+
+  /** Once a second: crops ripen and saplings may grow into trees (they need some light). */
+  private grow(): void {
+    const w = this.world;
+    for (const i of [...this.growing]) {
+      const [x, y, z] = w.coords(i);
+      const id = w.data[i];
+      const lit = Math.max(w.skyLight(x, y, z), w.blockLight(x, y, z)) >= 9;
+      if (!lit) continue;
+      if (id === Block.Wheat) {
+        const stage = w.meta[i];
+        if (stage < 3 && this.rng() < 1 / 30) this.editBlocks([[x, y, z, Block.Wheat, stage + 1]]);
+        if (stage + 1 >= 3) this.growing.delete(i);
+      } else if (id === Block.Sapling && this.rng() < 1 / 75) {
+        // Needs room to grow: no blocks in the space above
+        let room = true;
+        for (let k = 1; k <= 6 && room; k++) if (w.get(x, y + k, z) !== Block.Air) room = false;
+        if (!room) continue;
+        const pine = w.meta[i] === 1;
+        w.set(x, y, z, Block.Air);
+        this.growing.delete(i);
+        if (pine) pineTree(w, this.rng, x, y - 1, z);
+        else oakTree(w, this.rng, x, y - 1, z);
+        // The tree was written straight into the world: refresh meshes and light around it.
+        for (let dz = -3; dz <= 3; dz += 3) for (let dx = -3; dx <= 3; dx += 3) this.chunks.markDirty(x + dx, z + dz);
+        this.chunks.markChunks(this.lighting.updateBox(x - 3, z - 3, x + 3, z + 3));
+        this.chunks.flush();
+        this.dirty = true;
+      }
+    }
   }
 
   private breakBlock(t: RayHit, drops: boolean): void {
     const id = this.world.get(t.x, t.y, t.z);
+    const meta = this.world.getMeta(t.x, t.y, t.z);
     const def = blockDef(id);
     // Water next to the hole flows into it.
     const w = this.world;
@@ -586,16 +692,54 @@ export class Game {
     if (def) this.opts.audio.breakBlock(def.sound, { x: t.x + 0.5, y: t.y + 0.5, z: t.z + 0.5 });
     navigator.vibrate?.(12);
     if (drops && this.rulesNow.drops) {
-      for (const d of blockDrops(id, this.rng)) this.items.spawn(d, t.x + 0.5, t.y + 0.5, t.z + 0.5);
+      for (const d of blockDrops(id, this.rng, meta)) this.items.spawn(d, t.x + 0.5, t.y + 0.5, t.z + 0.5);
     }
   }
 
-  /** Place the held block, or eat the held food. */
+  /** Use whatever you're pointing at or holding: open a chest, sleep, eat, till, plant, or place a block. */
   private use(): void {
     if (this.paused || this.death.isOpen) return;
+    const t = this.target;
+    // Blocks that do something when used take priority over placing.
+    if (t) {
+      const tid = this.world.get(t.x, t.y, t.z);
+      if (blockDef(tid)?.interactive) {
+        this.held.swing();
+        if (tid === Block.Chest) return this.openChest(t.x, t.y, t.z);
+        if (tid === Block.Bed) return this.sleep(t.x, t.y, t.z);
+        return this.openInventory();
+      }
+    }
     const stack = this.heldStack;
     const def = stack ? itemDef(stack.id) : undefined;
     if (!stack || !def) return;
+
+    // Hoe: turn grass or dirt into farmland
+    if (def.tool?.type === "hoe") {
+      if (!t) return;
+      const tid = this.world.get(t.x, t.y, t.z);
+      if ((tid === Block.Grass || tid === Block.Dirt || tid === Block.SnowyGrass) && this.world.get(t.x, t.y + 1, t.z) === Block.Air) {
+        this.editBlocks([[t.x, t.y, t.z, Block.Farmland]]);
+        this.opts.audio.place("dirt", { x: t.x + 0.5, y: t.y + 1, z: t.z + 0.5 });
+        this.held.swing();
+        if (!this.rulesNow.infiniteBlocks && this.inventory.wear(this.slot)) this.opts.audio.play("toolBreak");
+      }
+      return;
+    }
+    // Seeds and saplings: plant on top of the block you're pointing at
+    if (def.plants) {
+      if (!t) return;
+      const ok = def.plants.on.includes(this.world.get(t.x, t.y, t.z) as never) && this.world.get(t.x, t.y + 1, t.z) === Block.Air;
+      if (!ok) {
+        this.hud.toast(def.plants.block === Block.Wheat ? "Plant seeds on farmland (use a hoe)" : "Plant on grass or dirt");
+        return;
+      }
+      this.editBlocks([[t.x, t.y + 1, t.z, def.plants.block, def.plants.meta]]);
+      if (!this.rulesNow.infiniteBlocks) this.inventory.takeOne(this.slot);
+      this.opts.audio.place("leaves", { x: t.x + 0.5, y: t.y + 1, z: t.z + 0.5 });
+      this.held.swing();
+      return;
+    }
 
     if (def.food !== undefined) {
       if (!this.rulesNow.vitals) return;
@@ -609,19 +753,71 @@ export class Game {
     }
     if (def.block === undefined) return;
 
-    const t = this.target;
     if (!t) return;
     const { px, py, pz } = t;
     if (!this.world.inBounds(px, py, pz)) return;
     const here = this.world.get(px, py, pz);
     if (here !== Block.Air && here !== Block.Water) return;
-    if (def.block !== Block.Water && this.player.overlapsBlock(px, py, pz)) return;
-    this.editBlocks([[px, py, pz, def.block]]);
+    const bdef = blockDef(def.block);
+    if (bdef?.solid && this.player.overlapsBlock(px, py, pz)) return;
+    if (bdef?.needsSupport && !blockDef(this.world.get(px, py - 1, pz))?.solid) {
+      this.hud.toast(`${bdef.name}: place it on top of a block`);
+      return;
+    }
+    // Furnaces and chests face you when placed.
+    const meta = bdef?.front ? facingToward(px, pz, this.player.pos.x, this.player.pos.z) : 0;
+    this.editBlocks([[px, py, pz, def.block, meta]]);
     if (!this.rulesNow.infiniteBlocks) this.inventory.takeOne(this.slot);
     const bd = blockDef(def.block);
     if (bd) this.opts.audio.place(bd.sound, { x: px + 0.5, y: py + 0.5, z: pz + 0.5 });
     this.held.swing();
     navigator.vibrate?.(8);
+  }
+
+  /** Crafting stations within reach (4 blocks) of the player. */
+  private nearbyStations(): Set<Station> {
+    const near = new Set<Station>(["hand"]);
+    const p = this.player.pos;
+    const cx = Math.floor(p.x), cy = Math.floor(p.y + 1), cz = Math.floor(p.z);
+    for (let y = cy - 4; y <= cy + 4; y++) {
+      for (let z = cz - 4; z <= cz + 4; z++) {
+        for (let x = cx - 4; x <= cx + 4; x++) {
+          const id = this.world.get(x, y, z);
+          if (id === Block.CraftingTable) near.add("table");
+          else if (id === Block.Furnace) near.add("furnace");
+        }
+      }
+    }
+    return near;
+  }
+
+  private openChest(x: number, y: number, z: number): void {
+    const i = this.world.index(x, y, z);
+    let inv = this.chests.get(i);
+    if (!inv) {
+      inv = new Inventory(27);
+      this.chests.set(i, inv);
+    }
+    this.dirty = true;
+    this.openInventory(inv);
+  }
+
+  /** Beds: set your respawn point, and at night skip to morning. */
+  private sleep(x: number, y: number, z: number): void {
+    this.spawn = { x: x + 0.5, y: y + 1, z: z + 0.5, yaw: this.player.yaw };
+    const night = this.time > 0.52 && this.time < 0.97;
+    if (night) {
+      this.hud.sleepFade();
+      this.opts.audio.play("respawn");
+      setTimeout(() => {
+        this.time = 0.02;
+        this.hud.toast("Good morning");
+      }, 900);
+    } else {
+      this.hud.toast("Respawn point set · you can sleep at night");
+      this.opts.audio.play("click");
+    }
+    this.dirty = true;
   }
 
   private select(n: number): void {
@@ -762,6 +958,7 @@ export class Game {
       spawn: { x: this.spawn.x, y: this.spawn.y, z: this.spawn.z },
       rules: this.rules,
       selectedSlot: this.slot,
+      chests: Object.fromEntries([...this.chests].filter(([, inv]) => !inv.isEmpty()).map(([i, inv]) => [String(i), inv.save()])),
     });
     updateWorldMeta(this.meta.id, { lastPlayed: Date.now(), mode: this.mode });
     this.dirty = false;

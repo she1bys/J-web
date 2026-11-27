@@ -1,7 +1,7 @@
 import { ITEMS, describeItem, itemCategory, itemDef, maxStack, type ItemCategory } from "../items/items";
 import { iconElement } from "../items/itemIcons";
 import { Inventory, type ItemStack } from "../items/Inventory";
-import { RECIPES, canCraft, craft, type Recipe } from "../items/recipes";
+import { RECIPES, STATION_NAMES, canCraft, craft, hasIngredients, type Recipe, type Station } from "../items/recipes";
 import type { GameMode } from "../modes";
 import { fillSlot } from "./Hud";
 
@@ -36,7 +36,7 @@ export class InventoryScreen {
   private hand: ItemStack | null = null;
   /** Slot the held stack came from (for double-tap quick move). */
   private handFrom = -1;
-  private lastTap = { slot: -1, time: 0 };
+  private lastTap: { slot: number; time: number; inv: Inventory | null } = { slot: -1, time: 0, inv: null };
   private hovered = -1;
   private focusStack: ItemStack | null = null;
   private selected = 0;
@@ -44,7 +44,15 @@ export class InventoryScreen {
   private filter: CreativeFilter = "all";
   private search = "";
   private onlyCraftable = false;
+  /** An open chest, shown in place of crafting. */
+  private chest: Inventory | null = null;
+  private chestEls: HTMLButtonElement[] = [];
+  /** Crafting stations in reach (hand, table, furnace). */
+  private stations = new Set<Station>(["hand"]);
+  /** Which container the held stack came from. */
+  private handFromInv: Inventory | null = null;
   private unsub: () => void;
+  private unsubChest: (() => void) | null = null;
   isOpen = false;
 
   constructor(
@@ -127,12 +135,16 @@ export class InventoryScreen {
     this.unsub = inv.onChange(() => this.isOpen && this.render());
   }
 
-  open(mode: GameMode, selected: number): void {
+  open(mode: GameMode, selected: number, stations: Set<Station> = new Set(["hand"]), chest?: Inventory): void {
     this.mode = mode;
     this.selected = selected;
+    this.stations = stations;
+    this.chest = chest ?? null;
+    this.unsubChest?.();
+    this.unsubChest = chest ? chest.onChange(() => this.isOpen && this.render()) : null;
     this.isOpen = true;
     this.root.hidden = false;
-    this.root.querySelector(".inv-mode")!.textContent = mode === "creative" ? "Creative" : "Survival";
+    this.root.querySelector(".inv-mode")!.textContent = this.chest ? "Chest" : mode === "creative" ? "Creative" : "Survival";
     this.focusStack = this.inv.get(selected);
     this.buildSide();
     this.render();
@@ -149,6 +161,9 @@ export class InventoryScreen {
       this.hand = null;
     }
     this.isOpen = false;
+    this.unsubChest?.();
+    this.unsubChest = null;
+    this.chest = null;
     this.root.hidden = true;
     this.tip.hidden = true;
     removeEventListener("keydown", this.onKey);
@@ -188,22 +203,22 @@ export class InventoryScreen {
     }
   }
 
-  private onSlot(e: PointerEvent, i: number): void {
+  private onSlot(e: PointerEvent, i: number, inv: Inventory = this.inv): void {
     e.preventDefault();
     const now = performance.now();
-    const double = this.lastTap.slot === i && now - this.lastTap.time < 320;
-    this.lastTap = { slot: i, time: now };
-    const slot = this.inv.get(i);
+    const double = this.lastTap.slot === i && this.lastTap.inv === inv && now - this.lastTap.time < 320;
+    this.lastTap = { slot: i, time: now, inv };
+    const slot = inv.get(i);
     const hand = this.hand;
 
-    if (double && hand && this.handFrom === i && !slot) {
+    if (double && hand && this.handFrom === i && this.handFromInv === inv && !slot) {
       // Double-tap: put it back and move it between hotbar and backpack
-      this.inv.set(i, hand);
+      inv.set(i, hand);
       this.hand = null;
-      this.inv.quickMove(i);
+      this.quickMove(inv, i);
       this.onSound("click");
     } else if (e.shiftKey && !hand) {
-      this.inv.quickMove(i);
+      this.quickMove(inv, i);
       this.onSound("click");
     } else if (e.button === 2) {
       // Right click: take half, or place one
@@ -211,10 +226,11 @@ export class InventoryScreen {
         const half = Math.ceil(slot.count / 2);
         this.hand = { ...slot, count: half };
         this.handFrom = i;
-        this.inv.set(i, slot.count - half > 0 ? { ...slot, count: slot.count - half } : null);
+        this.handFromInv = inv;
+        inv.set(i, slot.count - half > 0 ? { ...slot, count: slot.count - half } : null);
         this.onSound("pickup");
       } else if (hand && (!slot || (slot.id === hand.id && slot.count < maxStack(slot.id)))) {
-        this.inv.set(i, slot ? { ...slot, count: slot.count + 1 } : { ...hand, count: 1 });
+        inv.set(i, slot ? { ...slot, count: slot.count + 1 } : { ...hand, count: 1 });
         hand.count--;
         if (hand.count <= 0) this.hand = null;
         this.onSound("drop");
@@ -223,33 +239,61 @@ export class InventoryScreen {
       if (slot) {
         this.hand = slot;
         this.handFrom = i;
-        this.inv.set(i, null);
+        this.handFromInv = inv;
+        inv.set(i, null);
         this.onSound("pickup");
       }
     } else if (!slot) {
-      this.inv.set(i, hand);
+      inv.set(i, hand);
       this.hand = null;
       this.onSound("drop");
     } else if (slot.id === hand.id && maxStack(slot.id) > 1) {
       const n = Math.min(hand.count, maxStack(slot.id) - slot.count);
-      this.inv.set(i, { ...slot, count: slot.count + n });
+      inv.set(i, { ...slot, count: slot.count + n });
       hand.count -= n;
       if (hand.count <= 0) this.hand = null;
       this.onSound("drop");
     } else {
-      this.inv.set(i, hand);
+      inv.set(i, hand);
       this.hand = slot;
       this.handFrom = i;
+        this.handFromInv = inv;
       this.onSound("pickup");
     }
-    this.focusStack = this.hand ?? this.inv.get(i);
+    this.focusStack = this.hand ?? inv.get(i);
     this.render();
+  }
+
+  /** Move a stack to the other side: chest ↔ bag when a chest is open, else hotbar ↔ backpack. */
+  private quickMove(inv: Inventory, i: number): void {
+    const other = this.chest ? (inv === this.chest ? this.inv : this.chest) : null;
+    if (!other) return inv.quickMove(i);
+    const s = inv.get(i);
+    if (!s) return;
+    const left = other.add(s.id, s.count, s.dur);
+    inv.set(i, left > 0 ? { ...s, count: left } : null);
   }
 
   /* ---------- Right column ---------- */
 
   private buildSide(): void {
     this.side.replaceChildren();
+    this.chestEls = [];
+    if (this.chest) {
+      const chest = this.chest;
+      this.side.innerHTML = '<div class="inv-side-head"><div class="inv-label">Chest</div></div><div class="inv-grid inv-chest"></div>';
+      const grid = this.side.querySelector(".inv-chest")!;
+      for (let i = 0; i < chest.size; i++) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = "inv-slot";
+        b.addEventListener("pointerdown", e => this.onSlot(e, i, chest));
+        b.addEventListener("contextmenu", e => e.preventDefault());
+        grid.appendChild(b);
+        this.chestEls.push(b);
+      }
+      return;
+    }
     if (this.mode === "creative") {
       this.side.innerHTML = `
         <div class="inv-side-head">
@@ -346,18 +390,25 @@ export class InventoryScreen {
     const best = new Map<number, Recipe>();
     for (const r of RECIPES) {
       const cur = best.get(r.result.id);
-      if (!cur || (!canCraft(this.inv, cur) && canCraft(this.inv, r))) best.set(r.result.id, r);
+      if (!cur || (!this.can(cur) && this.can(r))) best.set(r.result.id, r);
     }
     const unique = [...best.values()];
-    const ready = unique.filter(r => canCraft(this.inv, r));
+    const ready = unique.filter(r => this.can(r));
     this.side.querySelector(".inv-count")!.textContent = ready.length ? `${ready.length} ready` : "";
-    const shown = this.onlyCraftable ? ready : unique.sort((a, b) => Number(canCraft(this.inv, b)) - Number(canCraft(this.inv, a)));
+    // Ready first, then ones you could make at a station you're not near, then the rest
+    const rank = (r: Recipe) => (this.can(r) ? 2 : hasIngredients(this.inv, r) ? 1 : 0);
+    const shown = this.onlyCraftable ? ready : unique.sort((a, b) => rank(b) - rank(a));
     list.replaceChildren(...shown.map(r => this.recipeCard(r)));
     if (!shown.length) list.insertAdjacentHTML("beforeend", '<p class="inv-empty">Nothing to craft yet. Gather wood from trees to start.</p>');
   }
 
+  private can(r: Recipe): boolean {
+    return canCraft(this.inv, r, this.stations);
+  }
+
   private recipeCard(r: Recipe): HTMLElement {
-    const ok = canCraft(this.inv, r);
+    const ok = this.can(r);
+    const missingStation = r.station !== "hand" && !this.stations.has(r.station);
     const def = itemDef(r.result.id);
     const card = document.createElement("div");
     card.className = `inv-recipe${ok ? "" : " off"}`;
@@ -384,6 +435,12 @@ export class InventoryScreen {
       needs.appendChild(chip);
     }
     body.append(name, needs);
+    if (r.station !== "hand") {
+      const where = document.createElement("div");
+      where.className = `r-station${missingStation ? " missing" : ""}`;
+      where.textContent = missingStation ? `Needs a ${STATION_NAMES[r.station].toLowerCase()} nearby` : STATION_NAMES[r.station];
+      body.appendChild(where);
+    }
 
     const actions = document.createElement("div");
     actions.className = "r-actions";
@@ -399,7 +456,7 @@ export class InventoryScreen {
     max.disabled = !ok;
     const make = (times: number) => {
       let made = 0;
-      while (made < times && craft(this.inv, r)) made++;
+      while (made < times && craft(this.inv, r, this.stations)) made++;
       this.onSound(made ? "craft" : "error");
       if (made) this.focusStack = { id: r.result.id, count: r.result.count * made };
       this.renderInfo();
@@ -450,6 +507,8 @@ export class InventoryScreen {
   }
 
   private render(): void {
+    const chest = this.chest;
+    if (chest) this.chestEls.forEach((el, i) => fillSlot(el, chest.get(i)));
     this.slotEls.forEach((el, i) => {
       fillSlot(el, this.inv.get(i));
       el.classList.toggle("selected", i === this.selected);
@@ -459,7 +518,7 @@ export class InventoryScreen {
     fillSlot(this.float, this.hand);
     this.float.hidden = !this.hand;
     this.renderInfo();
-    if (this.mode === "survival") this.renderRecipes();
+    if (this.mode === "survival" && !this.chest) this.renderRecipes();
   }
 
   dispose(): void {

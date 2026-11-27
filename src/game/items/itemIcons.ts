@@ -11,6 +11,7 @@ type Painter = (put: (x: number, y: number, c: string) => void) => void;
 
 const WOOD = ["#a5804f", "#7a5230"];
 const STONE = ["#9a9a9a", "#5e5e5e"];
+const IRON = ["#e4e4e8", "#9a9aa4"];
 const HANDLE = ["#8a6240", "#5a3a20"];
 
 /** A diagonal handle from bottom-left toward the top-right. */
@@ -34,6 +35,26 @@ const head = (pts: Px[], [light, dark]: string[]): Painter => put => {
   for (const [x, y] of pts) put(x, y, (x + y) % 4 === 0 ? dark : light);
 };
 
+/** A blob filled from a distance function, for food and materials. */
+const blob = (inside: (x: number, y: number) => boolean, color: (x: number, y: number) => string): Painter => put => {
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) if (inside(x, y)) put(x, y, color(x, y));
+};
+
+/** Sword: a diagonal blade, a crossguard and a short grip. */
+const sword = ([light, dark]: string[]): Painter => put => {
+  for (let i = 5; i <= 13; i++) {
+    put(i, 15 - i, light);
+    put(i + 1, 15 - i, dark);
+    put(i, 16 - i, dark);
+  }
+  for (let k = -2; k <= 2; k++) put(5 + k, 10 + k, "#5a3a20"); // crossguard
+  for (let i = 2; i <= 4; i++) put(i, 15 - i, HANDLE[0]);
+  put(1, 14, HANDLE[1]);
+};
+
+/** Hoe: a handle with a small blade bent off the top. */
+const HOE_HEAD: Px[] = [[9, 3], [10, 3], [11, 3], [12, 3], [9, 4], [10, 4], [11, 4], [12, 4], [12, 5], [12, 6]];
+
 const SPRITES: Record<number, Painter> = {
   [Item.Stick]: put => handle(put, 13),
   [Item.Apple]: put => {
@@ -52,6 +73,52 @@ const SPRITES: Record<number, Painter> = {
   [Item.StoneAxe]: put => { handle(put, 11); head(AXE_HEAD, STONE)(put); },
   [Item.WoodenShovel]: put => { handle(put, 9); head(SHOVEL_HEAD, WOOD)(put); },
   [Item.StoneShovel]: put => { handle(put, 9); head(SHOVEL_HEAD, STONE)(put); },
+  [Item.IronPickaxe]: put => { handle(put, 10); head(PICK_HEAD, IRON)(put); },
+  [Item.IronAxe]: put => { handle(put, 11); head(AXE_HEAD, IRON)(put); },
+  [Item.IronShovel]: put => { handle(put, 9); head(SHOVEL_HEAD, IRON)(put); },
+  [Item.WoodenSword]: sword(WOOD),
+  [Item.StoneSword]: sword(STONE),
+  [Item.IronSword]: sword(IRON),
+  [Item.WoodenHoe]: put => { handle(put, 10); head(HOE_HEAD, WOOD)(put); },
+  [Item.StoneHoe]: put => { handle(put, 10); head(HOE_HEAD, STONE)(put); },
+  [Item.IronHoe]: put => { handle(put, 10); head(HOE_HEAD, IRON)(put); },
+  [Item.Coal]: blob(
+    (x, y) => Math.hypot((x - 7.5) * 1.1, (y - 8.5) * 0.95) < 5.2 + ((x * 7 + y * 3) % 5 === 0 ? -1 : 0),
+    (x, y) => ((x + y) % 5 === 0 ? "#4a4a50" : y < 7 ? "#2e2e33" : "#1b1b1f"),
+  ),
+  [Item.IronIngot]: blob(
+    (x, y) => y >= 6 && y <= 11 && x >= 2 + (11 - y) * 0.5 && x <= 13 - (11 - y) * 0.5,
+    (_x, y) => (y === 6 ? "#f4f4f8" : y === 11 ? "#8a8a94" : "#c8c8d0"),
+  ),
+  [Item.Seeds]: put => {
+    for (const [x, y] of [[4, 6], [7, 4], [10, 7], [5, 10], [9, 11], [12, 4], [3, 13], [11, 13], [7, 8]]) {
+      put(x, y, "#c9b45a");
+      put(x + 1, y, "#8fb84a");
+    }
+  },
+  [Item.Wheat]: put => {
+    for (const x of [5, 7, 9, 11]) {
+      for (let y = 6; y < 15; y++) put(x, y, y % 3 === 0 ? "#a08a3a" : "#c9b45a");
+      for (let y = 1; y < 6; y++) put(x + (y % 2), y, y % 2 ? "#e8c45a" : "#c9a23e");
+    }
+    for (let x = 4; x <= 12; x++) put(x, 10, "#7a5a2a");
+  },
+  [Item.Bread]: blob(
+    (x, y) => Math.hypot((x - 7.5) / 1.5, (y - 9) / 0.85) < 4.6,
+    (x, y) => (y < 7 ? "#e0a35a" : (x + y) % 6 === 0 ? "#f0c890" : y > 11 ? "#a8682e" : "#c98a45"),
+  ),
+  [Item.RawMeat]: blob(
+    (x, y) => Math.hypot((x - 7.5) * 1.05, y - 8.5) < 5.4,
+    (x, y) => ((x * 3 + y) % 7 === 0 ? "#f6d8d8" : y > 11 ? "#b8343e" : "#e0505c"),
+  ),
+  [Item.CookedMeat]: blob(
+    (x, y) => Math.hypot((x - 7.5) * 1.05, y - 8.5) < 5.4,
+    (x, y) => ((x * 3 + y) % 7 === 0 ? "#d8a070" : y > 11 ? "#5e3218" : "#8a4a24"),
+  ),
+  [Item.Fluff]: blob(
+    (x, y) => Math.hypot(x - 5.5, y - 9) < 3.6 || Math.hypot(x - 10, y - 9) < 3.6 || Math.hypot(x - 8, y - 6) < 3.8,
+    (x, y) => (y > 11 ? "#dcd6e8" : (x + y) % 7 === 0 ? "#ffd6e6" : "#ffffff"),
+  ),
 };
 
 let atlas: HTMLCanvasElement | null = null;
@@ -65,7 +132,12 @@ export function itemIcon(id: number): HTMLCanvasElement {
   c.width = c.height = TILE_SIZE;
   const g = c.getContext("2d")!;
   const def = itemDef(id);
-  if (def?.block !== undefined) {
+  const plantTile = def?.plants && !SPRITES[id] ? BLOCKS[def.plants.block]?.variants?.[def.plants.meta] : undefined;
+  if (plantTile !== undefined) {
+    // Saplings show their own little plant texture
+    atlas ??= paintAtlas();
+    g.drawImage(atlas, (plantTile % ATLAS_COLS) * TILE_SIZE, Math.floor(plantTile / ATLAS_COLS) * TILE_SIZE, TILE_SIZE, TILE_SIZE, 0, 0, TILE_SIZE, TILE_SIZE);
+  } else if (def?.block !== undefined) {
     atlas ??= paintAtlas();
     const t = BLOCKS[def.block]?.tiles[1] ?? 0;
     g.drawImage(atlas, (t % ATLAS_COLS) * TILE_SIZE, Math.floor(t / ATLAS_COLS) * TILE_SIZE, TILE_SIZE, TILE_SIZE, 0, 0, TILE_SIZE, TILE_SIZE);

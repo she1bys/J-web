@@ -1,12 +1,17 @@
 import { Block, isSolidBlock } from "./blocks";
 
 /**
- * The block grid. One byte per block, laid out y-major so a horizontal layer is contiguous.
+ * The block grid, laid out y-major so a horizontal layer is contiguous. Per block:
+ * - `data`:  block id
+ * - `meta`:  extra state (which way it faces, crop growth stage, …)
+ * - `light`: sky light in the high 4 bits, block light (torches) in the low 4 bits
  * Changes made after generation are recorded in `edits` so they can be saved.
  */
 export class World {
   readonly data: Uint8Array;
-  /** index -> block id, for every block changed by the player. */
+  readonly meta: Uint8Array;
+  readonly light: Uint8Array;
+  /** index -> block id + meta × 256, for every block changed by the player. */
   readonly edits = new Map<number, number>();
   /** Turn on after generation so only player changes are recorded. */
   recording = false;
@@ -17,6 +22,8 @@ export class World {
     readonly sz: number,
   ) {
     this.data = new Uint8Array(sx * sy * sz);
+    this.meta = new Uint8Array(sx * sy * sz);
+    this.light = new Uint8Array(sx * sy * sz);
   }
 
   index(x: number, y: number, z: number): number {
@@ -31,11 +38,34 @@ export class World {
     return this.inBounds(x, y, z) ? this.data[this.index(x, y, z)] : Block.Air;
   }
 
-  set(x: number, y: number, z: number, id: number): void {
+  set(x: number, y: number, z: number, id: number, meta = 0): void {
     if (!this.inBounds(x, y, z)) return;
     const i = this.index(x, y, z);
     this.data[i] = id;
-    if (this.recording) this.edits.set(i, id);
+    this.meta[i] = meta;
+    if (this.recording) this.edits.set(i, id + meta * 256);
+  }
+
+  getMeta(x: number, y: number, z: number): number {
+    return this.inBounds(x, y, z) ? this.meta[this.index(x, y, z)] : 0;
+  }
+
+  setMeta(x: number, y: number, z: number, meta: number): void {
+    if (!this.inBounds(x, y, z)) return;
+    const i = this.index(x, y, z);
+    this.meta[i] = meta;
+    if (this.recording) this.edits.set(i, this.data[i] + meta * 256);
+  }
+
+  /** Sky light (0–15) at a cell; full daylight above the world. */
+  skyLight(x: number, y: number, z: number): number {
+    if (y >= this.sy) return 15;
+    return this.inBounds(x, y, z) ? this.light[this.index(x, y, z)] >> 4 : 0;
+  }
+
+  /** Block light (0–15) from torches and lanterns at a cell. */
+  blockLight(x: number, y: number, z: number): number {
+    return this.inBounds(x, y, z) ? this.light[this.index(x, y, z)] & 15 : 0;
   }
 
   /** Fill a box (inclusive bounds). */
@@ -71,8 +101,10 @@ export class World {
     for (let k = 0; k + 1 < flat.length; k += 2) {
       const i = flat[k];
       if (i < 0 || i >= this.data.length) continue;
-      this.data[i] = flat[k + 1];
-      this.edits.set(i, flat[k + 1]);
+      const v = flat[k + 1];
+      this.data[i] = v & 255;
+      this.meta[i] = v >> 8;
+      this.edits.set(i, v);
     }
   }
 

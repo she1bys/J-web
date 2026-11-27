@@ -191,3 +191,8 @@
   .inv { --islot: min(38px, calc((100vw - 70px) / 9)); }
   .inv-side { max-height: 45vh; }
 }
+
+/* Station needed for a recipe */
+.r-station { font-size: 11px; font-weight: 600; color: var(--inv-sub); }
+.r-station.missing { color: #c0303a; }
+.inv-chest { grid-template-columns: repeat(9, var(--islot)); }

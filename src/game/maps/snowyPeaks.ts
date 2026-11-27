@@ -3,6 +3,7 @@ import { Block } from "../world/blocks";
 import type { MapDefinition } from "./types";
 import { pineTree } from "./shared/structures";
 import { findDrySpawn } from "./shared/spawn";
+import { bedrock, carveCaves, placeOres } from "./shared/underground";
 
 /** Tall mountains with snowy caps, pine forests and a frozen lake. */
 export const snowyPeaks: MapDefinition = {
@@ -46,6 +47,10 @@ export const snowyPeaks: MapDefinition = {
         if (top < LAKE) w.set(x, LAKE, z, Block.Ice);
       }
     }
+
+    carveCaves(w, seed, { minDepth: 3, avoid: (x, z) => Math.hypot(x - spawn.x, z - spawn.z) < 10 });
+    placeOres(w, rng);
+    bedrock(w, rng);
 
     for (let z = 3; z < w.sz - 3; z++) {
       for (let x = 3; x < w.sx - 3; x++) {

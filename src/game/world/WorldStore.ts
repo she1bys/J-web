@@ -37,6 +37,8 @@ export interface WorldSave {
   spawn?: { x: number; y: number; z: number };
   rules?: WorldRules;
   selectedSlot?: number;
+  /** Chest contents, keyed by block index. */
+  chests?: Record<string, SavedInventory>;
 }
 
 export const DEFAULT_RULES: WorldRules = { keepInventory: false, dayCycle: true };

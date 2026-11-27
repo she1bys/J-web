@@ -3,6 +3,7 @@ import { Block } from "../world/blocks";
 import type { MapDefinition } from "./types";
 import { cabin, oakTree } from "./shared/structures";
 import { findDrySpawn } from "./shared/spawn";
+import { bedrock, carveCaves, placeOres } from "./shared/underground";
 
 /** Rolling green hills, a pond, a little cabin and the name floating in the sky. */
 export const meadow: MapDefinition = {
@@ -40,6 +41,10 @@ export const meadow: MapDefinition = {
         for (let y = h + 1; y <= WATER; y++) w.set(x, y, z, Block.Water);
       }
     }
+
+    carveCaves(w, seed, { avoid: (x, z) => Math.hypot(x - spawn.x, z - spawn.z) < 9 || Math.hypot(x - (spawn.x - 11), z - (spawn.z - 4)) < 7 });
+    placeOres(w, rng);
+    bedrock(w, rng);
 
     for (let z = 3; z < w.sz - 3; z++) {
       for (let x = 3; x < w.sx - 3; x++) {

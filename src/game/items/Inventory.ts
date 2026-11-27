@@ -17,8 +17,13 @@ export type SavedInventory = ([id: number, count: number, dur?: number] | null)[
 export class Inventory {
   static readonly SIZE = 36;
   static readonly HOTBAR = 9;
-  readonly slots: (ItemStack | null)[] = Array(Inventory.SIZE).fill(null);
+  readonly slots: (ItemStack | null)[];
   private listeners = new Set<() => void>();
+
+  /** 36 for the player (with a hotbar); 27 for a chest. */
+  constructor(readonly size = Inventory.SIZE) {
+    this.slots = Array(size).fill(null);
+  }
 
   onChange(fn: () => void): () => void {
     this.listeners.add(fn);
@@ -43,7 +48,7 @@ export class Inventory {
     const max = maxStack(id);
     let left = count;
     if (max > 1) {
-      for (let i = 0; i < Inventory.SIZE && left > 0; i++) {
+      for (let i = 0; i < this.size && left > 0; i++) {
         const s = this.slots[i];
         if (s && s.id === id && s.count < max) {
           const n = Math.min(left, max - s.count);
@@ -52,7 +57,7 @@ export class Inventory {
         }
       }
     }
-    for (let i = 0; i < Inventory.SIZE && left > 0; i++) {
+    for (let i = 0; i < this.size && left > 0; i++) {
       if (this.slots[i]) continue;
       const n = Math.min(left, max);
       const tool = itemDef(id)?.tool;
@@ -77,7 +82,7 @@ export class Inventory {
   /** Remove `n` of an item (backpack first). Returns false and changes nothing if there aren't enough. */
   remove(id: number, n: number): boolean {
     if (this.count(id) < n) return false;
-    for (let i = Inventory.SIZE - 1; i >= 0 && n > 0; i--) {
+    for (let i = this.size - 1; i >= 0 && n > 0; i--) {
       const s = this.slots[i];
       if (s?.id !== id) continue;
       const take = Math.min(n, s.count);
@@ -174,7 +179,7 @@ export class Inventory {
 
   load(data: SavedInventory | undefined): void {
     this.slots.fill(null);
-    data?.slice(0, Inventory.SIZE).forEach((e, i) => {
+    data?.slice(0, this.size).forEach((e, i) => {
       if (e && itemDef(e[0]) && e[1] > 0) this.slots[i] = { id: e[0], count: e[1], ...(e[2] !== undefined ? { dur: e[2] } : {}) };
     });
     this.changed();
