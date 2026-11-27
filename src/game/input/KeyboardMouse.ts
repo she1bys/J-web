@@ -8,6 +8,8 @@ import type { InputActions, InputState } from "./InputState";
 export class KeyboardMouse {
   private keys = new Set<string>();
   private lastSpace = 0;
+  /** Whether we currently want the mouse captured (a request can be granted after we've paused). */
+  private wantLock = false;
   enabled = false;
 
   constructor(
@@ -32,6 +34,7 @@ export class KeyboardMouse {
   }
 
   requestLock(): void {
+    this.wantLock = true;
     try {
       const p = this.canvas.requestPointerLock() as unknown as Promise<void> | undefined;
       p?.catch?.(() => {});
@@ -41,6 +44,7 @@ export class KeyboardMouse {
   }
 
   releaseLock(): void {
+    this.wantLock = false;
     if (this.locked) document.exitPointerLock();
   }
 
@@ -56,6 +60,7 @@ export class KeyboardMouse {
   private onCanvasClick = () => {
     if (this.enabled && !this.locked) this.requestLock();
   };
+
 
   private onMouseDown = (e: MouseEvent) => {
     if (!this.enabled || !this.locked) return;
@@ -75,7 +80,15 @@ export class KeyboardMouse {
     this.state.lookY += e.movementY;
   };
 
-  private onPointerLock = () => this.onLockChange(this.locked);
+  private onPointerLock = () => {
+    // A capture that arrives after we stopped wanting it (e.g. paused right after closing a
+    // screen) is handed straight back, so menu clicks keep working.
+    if (this.locked && (!this.wantLock || !this.enabled)) {
+      document.exitPointerLock();
+      return;
+    }
+    this.onLockChange(this.locked);
+  };
 
   private onWheel = (e: WheelEvent) => {
     if (this.enabled && this.locked) this.actions.cycleSlot(Math.sign(e.deltaY));

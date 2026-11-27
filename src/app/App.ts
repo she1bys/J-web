@@ -5,6 +5,8 @@ import { MusicPlayer } from "../core/MusicPlayer";
 import { addDeviceSongs, clearDeviceSongs } from "../core/songStore";
 import { isIOS, isStandalone, isTouchDevice, prefersReducedMotion } from "../core/timeline";
 import { readJSON, writeJSON } from "../core/storage";
+import { requestPersistentStorage } from "../core/offline";
+import { WORLD_FILE_ACCEPT, importWorldFile, shareOrDownload, worldToFile } from "../game/world/worldFiles";
 import { Viewport } from "../core/viewport";
 import { SunsetIntro } from "../cinematic/SunsetIntro";
 import { Particles } from "../title/Particles";
@@ -43,6 +45,9 @@ export class App {
   private readonly audio = new AudioEngine();
   private readonly music = new MusicPlayer();
   private songPicker: HTMLInputElement;
+  private worldPicker: HTMLInputElement;
+  /** A short message shown on the worlds screen (import result). */
+  private notice = "";
   private readonly touch = isTouchDevice();
   private readonly reduce = prefersReducedMotion();
 
@@ -108,6 +113,14 @@ export class App {
     this.songPicker.hidden = true;
     root.appendChild(this.songPicker);
     this.songPicker.addEventListener("change", () => void this.addSongs());
+
+    // Hidden file picker for "Import world".
+    this.worldPicker = document.createElement("input");
+    this.worldPicker.type = "file";
+    this.worldPicker.accept = WORLD_FILE_ACCEPT;
+    this.worldPicker.hidden = true;
+    root.appendChild(this.worldPicker);
+    this.worldPicker.addEventListener("change", () => void this.importWorld());
 
     this.applyAudioSettings();
     this.music.onChange = () => {
@@ -244,8 +257,11 @@ export class App {
       ],
       worlds: () => {
         const worlds = listWorlds();
+        const notice = this.notice;
+        this.notice = "";
         return [
           title("Worlds"),
+          ...(notice ? [text(escapeHtml(notice))] : []),
           button("Create new world", () => this.newWorld()),
           ...worlds.map(w =>
             button(w.name, () => {
@@ -254,6 +270,7 @@ export class App {
             }, { detail: `${getMap(w.mapId).name} · ${MODE_NAMES[w.mode]} · ${ago(w.lastPlayed)}` }),
           ),
           ...(worlds.length ? [] : [text("No saved worlds yet")]),
+          button("Import world", () => this.worldPicker.click(), { detail: "Open a .gracia file" }),
           button("Back", () => this.back()),
         ];
       },
@@ -264,6 +281,10 @@ export class App {
           title(w.name),
           text(`${escapeHtml(getMap(w.mapId).name)} · ${MODE_NAMES[w.mode]}<br>Seed ${w.seed}`),
           button("Play", () => void this.play(w)),
+          button("Export world", () => {
+            const file = worldToFile(w.id);
+            if (file) shareOrDownload(file);
+          }, { detail: "Save a copy as a file" }),
           button("Delete world", () => this.go("confirm-delete")),
           button("Back", () => this.back()),
         ];
@@ -443,9 +464,24 @@ export class App {
     this.go("create");
   }
 
+  private async importWorld(): Promise<void> {
+    const file = this.worldPicker.files?.[0];
+    this.worldPicker.value = "";
+    if (!file) return;
+    try {
+      const w = await importWorldFile(file);
+      this.notice = `Imported "${w.name}"`;
+    } catch (e) {
+      this.notice = e instanceof Error ? e.message : "Couldn't import that file";
+    }
+    this.stack = ["main", "worlds"];
+    this.render(false);
+  }
+
   private async play(world: WorldMeta): Promise<void> {
     if (this.busy) return;
     this.busy = true;
+    requestPersistentStorage();
     // Ask for fullscreen landscape now, while we still have the tap.
     Viewport.requestLandscape();
     this.menuEl.hidden = true;
