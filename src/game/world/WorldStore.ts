@@ -2,6 +2,7 @@ import { GAME } from "../../config/game";
 import { readJSON, writeJSON, removeKey } from "../../core/storage";
 import type { GameMode } from "../modes";
 import type { SavedInventory } from "../items/Inventory";
+import type { ProgressSave } from "../progress/Achievements";
 
 /**
  * Saved worlds, kept in this browser. A small index lists every world (for the
@@ -39,6 +40,8 @@ export interface WorldSave {
   selectedSlot?: number;
   /** Chest contents, keyed by block index. */
   chests?: Record<string, SavedInventory>;
+  /** Achievements, counters and how far through the tips the player is. */
+  progress?: ProgressSave;
 }
 
 export const DEFAULT_RULES: WorldRules = { keepInventory: false, dayCycle: true };

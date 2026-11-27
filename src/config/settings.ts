@@ -24,6 +24,8 @@ export interface Settings {
   /** Let the sun rise and set while you play. */
   dayCycle: boolean;
   showFps: boolean;
+  /** Getting-started tips in new worlds. */
+  tips: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -39,6 +41,7 @@ export const DEFAULT_SETTINGS: Settings = {
   musicVolume: 6,
   dayCycle: true,
   showFps: false,
+  tips: true,
 };
 
 const KEY = `${GAME.storagePrefix}.settings`;

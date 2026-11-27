@@ -40,6 +40,8 @@ export class Hud {
       <div class="h-fps" hidden></div>
       <div class="h-flying" hidden>Flying</div>
       <div class="h-toast"></div>
+      <div class="h-tip" hidden><span class="h-tip-text"></span><button type="button" class="h-tip-x" aria-label="Hide tips">✕</button></div>
+      <div class="h-ach" aria-live="polite"><span class="h-ach-kicker">Achievement</span><span class="h-ach-name"></span><span class="h-ach-desc"></span></div>
       <div class="h-label"></div>
       <div class="h-hint"></div>
       <div class="h-vitals" hidden>
@@ -127,6 +129,33 @@ export class Hud {
       (el as HTMLElement).style.backgroundImage = i >= 10 - bubbles ? `url(${bubbleIcon()})` : "none";
     });
     this.hearts.classList.toggle("low", health <= 6);
+  }
+
+  /** Show (or hide, with null) the current getting-started tip. */
+  setTip(text: string | null): void {
+    const el = this.root.querySelector<HTMLElement>(".h-tip")!;
+    el.hidden = !text;
+    if (text) el.querySelector(".h-tip-text")!.textContent = text;
+  }
+
+  onTipDismiss(fn: () => void): void {
+    this.root.querySelector(".h-tip-x")!.addEventListener("click", e => {
+      e.stopPropagation();
+      fn();
+    });
+  }
+
+  private achTimer = 0;
+
+  achievement(name: string, description: string): void {
+    const el = this.root.querySelector<HTMLElement>(".h-ach")!;
+    el.querySelector(".h-ach-name")!.textContent = name;
+    el.querySelector(".h-ach-desc")!.textContent = description;
+    el.classList.remove("show");
+    void el.offsetWidth;
+    el.classList.add("show");
+    clearTimeout(this.achTimer);
+    this.achTimer = window.setTimeout(() => el.classList.remove("show"), 4200);
   }
 
   /** Fade to black and back (sleeping through the night). */

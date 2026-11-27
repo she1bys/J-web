@@ -62,6 +62,8 @@ export class InventoryScreen {
     /** Items that couldn't go back into the inventory on close are dropped. */
     private onDrop: (stack: ItemStack) => void,
     private onSound: (kind: InventorySound) => void,
+    /** Something was crafted (for achievements). */
+    private onCrafted: (id: number, count: number) => void = () => {},
   ) {
     this.root = document.createElement("div");
     this.root.className = "inv";
@@ -458,6 +460,7 @@ export class InventoryScreen {
       let made = 0;
       while (made < times && craft(this.inv, r, this.stations)) made++;
       this.onSound(made ? "craft" : "error");
+      if (made) this.onCrafted(r.result.id, r.result.count * made);
       if (made) this.focusStack = { id: r.result.id, count: r.result.count * made };
       this.renderInfo();
     };

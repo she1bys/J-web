@@ -20,7 +20,7 @@ import {
 } from "../game/world/WorldStore";
 import type { Game } from "../game/Game";
 
-type Screen = "main" | "install" | "worlds" | "world" | "create" | "confirm-delete" | "settings" | "music" | "howto" | "credits" | "pause";
+type Screen = "main" | "achievements" | "install" | "worlds" | "world" | "create" | "confirm-delete" | "settings" | "music" | "howto" | "credits" | "pause";
 
 /** "just now", "5 min ago", "3 days ago" */
 const ago = (t: number): string => {
@@ -244,6 +244,15 @@ export class App {
         // iPhones only allow true fullscreen for sites added to the Home Screen.
         ...(this.showInstallTip ? [button("Play fullscreen", () => this.go("install"), { detail: "Add to Home Screen" })] : []),
       ],
+      achievements: () => [
+        title("Achievements"),
+        text(
+          (this.game?.achievementList() ?? [])
+            .map(a => `${a.got ? "★" : "☆"} ${escapeHtml(a.name)}<br><small>${escapeHtml(a.description)}</small>`)
+            .join("<br>"),
+        ),
+        button("Back", () => this.back()),
+      ],
       install: () => [
         title("Fullscreen"),
         text("1. Tap the Share button<br>2. Choose Add to Home Screen<br>3. Open Gracia from there"),
@@ -339,6 +348,7 @@ export class App {
         button(`Intro movie: ${onOff(s.intro)}`, toggle("intro")),
         button(`Cursor trail: ${onOff(s.trail)}`, toggle("trail")),
         button(`Show FPS: ${onOff(s.showFps)}`, toggle("showFps")),
+        button(`Tips: ${onOff(s.tips)}`, toggle("tips")),
         button("Back", () => this.back()),
       ],
       music: () => {
@@ -378,6 +388,12 @@ export class App {
       pause: () => [
         title("Paused"),
         button("Resume", () => this.resumeGame()),
+        button("Achievements", () => this.go("achievements"), {
+          detail: (() => {
+            const list = this.game?.achievementList() ?? [];
+            return `${list.filter(a => a.got).length} of ${list.length} earned`;
+          })(),
+        }),
         button("Settings", () => this.go("settings")),
         button("How to play", () => this.go("howto")),
         button("Save and quit", () => this.toMainMenu()),

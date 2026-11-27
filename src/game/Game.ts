@@ -33,6 +33,8 @@ import type { Station } from "./items/recipes";
 import { oakTree, pineTree } from "./maps/shared/structures";
 import { blockDrops, miningInfo } from "./items/drops";
 import { Vitals } from "./survival/Vitals";
+import { ACHIEVEMENTS, Achievements } from "./progress/Achievements";
+import { CREATIVE_TIPS, SURVIVAL_TIPS } from "./progress/Tips";
 import { createCommands } from "./commands/builtin";
 import type { CommandContext } from "./commands/types";
 import type { CommandRegistry } from "./commands/registry";
@@ -130,6 +132,12 @@ export class Game {
   /** Crops and saplings that are still growing (block indices). */
   private growing = new Set<number>();
   private growTimer = 0;
+  private progress: Achievements;
+  private tipStep = 0;
+  private tipTimer = 0;
+  private lastPos = new THREE.Vector3();
+  /** The chest shown in the inventory screen, if one is open. */
+  private openChestInv: Inventory | null = null;
   private unsubscribers: (() => void)[] = [];
 
   constructor(opts: GameOptions) {
@@ -160,6 +168,16 @@ export class Game {
       inv.load(data);
       this.chests.set(Number(k), inv);
     }
+    this.progress = new Achievements(
+      a => {
+        this.hud?.achievement(a.name, a.description);
+        this.opts.audio.play("craft");
+        this.dirty = true;
+      },
+      save?.progress,
+      a => !a.survival || this.mode === "survival",
+    );
+    this.tipStep = save?.progress?.tip ?? 0;
     // Light the world, and find anything still growing.
     this.lighting = new Lighting(this.world);
     this.lighting.computeAll();
@@ -231,6 +249,7 @@ export class Game {
       () => this.closeUi(),
       stack => this.throwStack(stack),
       kind => opts.audio.play(kind),
+      id => this.progress.crafted(id),
     );
     this.cmdBar = new CommandBar(
       opts.container,
@@ -241,6 +260,12 @@ export class Game {
     this.death = new DeathScreen(opts.container, () => this.respawn(), () => opts.onExitToMenu());
 
     this.unsubscribers.push(this.inventory.onChange(() => this.refreshHotbar()));
+    this.hud.onTipDismiss(() => {
+      this.tipStep = 99;
+      this.hud.setTip(null);
+      this.dirty = true;
+    });
+    this.lastPos.copy(this.player.pos);
     this.hud.setFpsVisible(this.settings.showFps);
     this.applyMode();
     this.select(this.slot);
@@ -274,6 +299,7 @@ export class Game {
       setTimeout(() => this.hud.showHint(false), 4500);
     }
     this.ambience.setActive(true);
+    this.updateTip();
     this.lastT = performance.now();
     requestAnimationFrame(this.frame);
   }
@@ -362,6 +388,8 @@ export class Game {
   }
 
   private closeUi(): void {
+    if (this.openChestInv && !this.openChestInv.isEmpty()) this.progress.unlock("chest");
+    this.openChestInv = null;
     if (this.paused || this.uiOpen) return;
     this.setControlsEnabled(true);
     if (this.kbm) {
@@ -445,7 +473,22 @@ export class Game {
     this.held.visible = this.camMode === "first" && alive;
 
     // Sky and lighting
+    const prevTime = this.time;
     if (settings.dayCycle && this.rules.dayCycle) this.time = (this.time + dt / DAY_SECONDS) % 1;
+    this.progress.timeOfDay(prevTime, this.time, this.mode === "survival", alive);
+    if (!player.flying) {
+      const moved = Math.hypot(player.pos.x - this.lastPos.x, player.pos.z - this.lastPos.z);
+      if (moved < 2) {
+        const surface = this.world.surfaceY(Math.floor(player.pos.x), Math.floor(player.pos.z));
+        this.progress.moved(moved, surface - player.pos.y);
+      }
+    }
+    this.lastPos.copy(player.pos);
+    this.tipTimer += dt;
+    if (this.tipTimer > 0.5) {
+      this.tipTimer = 0;
+      this.updateTip();
+    }
     this.sky.update(this.time, this.camera, this.rig.underwater());
     const light = this.sky.light;
     // How bright the open sky is (0 night … 1 day); caves and shade come from the light map.
@@ -467,6 +510,7 @@ export class Game {
       if (!alive) return stack.count;
       const left = this.inventory.add(stack.id, stack.count, stack.dur);
       if (left < stack.count) {
+        this.progress.pickedUp(stack.id);
         audio.play("pickup", { volume: 0.7 });
         this.dirty = true;
       }
@@ -683,6 +727,7 @@ export class Game {
     const id = this.world.get(t.x, t.y, t.z);
     const meta = this.world.getMeta(t.x, t.y, t.z);
     const def = blockDef(id);
+    this.progress.mined(id, meta);
     // Water next to the hole flows into it.
     const w = this.world;
     const wet = w.isWater(t.x, t.y + 1, t.z) || w.isWater(t.x + 1, t.y, t.z) || w.isWater(t.x - 1, t.y, t.z) ||
@@ -745,6 +790,7 @@ export class Game {
       if (!this.rulesNow.vitals) return;
       if (this.vitals.eat(def.food)) {
         this.inventory.takeOne(this.slot);
+        this.progress.ate(def.id);
         this.opts.audio.play("eat");
         this.held.swing();
         this.dirty = true;
@@ -767,11 +813,29 @@ export class Game {
     // Furnaces and chests face you when placed.
     const meta = bdef?.front ? facingToward(px, pz, this.player.pos.x, this.player.pos.z) : 0;
     this.editBlocks([[px, py, pz, def.block, meta]]);
+    this.progress.placedBlock(def.block);
     if (!this.rulesNow.infiniteBlocks) this.inventory.takeOne(this.slot);
     const bd = blockDef(def.block);
     if (bd) this.opts.audio.place(bd.sound, { x: px + 0.5, y: py + 0.5, z: pz + 0.5 });
     this.held.swing();
     navigator.vibrate?.(8);
+  }
+
+  /** Show the next getting-started tip the player hasn't done yet. */
+  private updateTip(): void {
+    const tips = this.mode === "creative" ? CREATIVE_TIPS : SURVIVAL_TIPS;
+    const ctx = { inv: this.inventory, got: this.progress.got, touch: this.touch, time: this.time };
+    while (this.tipStep < tips.length && tips[this.tipStep].done(ctx)) {
+      this.tipStep++;
+      this.dirty = true;
+    }
+    const show = this.settings.tips && this.tipStep < tips.length && !this.uiOpen;
+    this.hud.setTip(show ? tips[this.tipStep].text(this.touch) : null);
+  }
+
+  /** For the pause menu: every achievement and whether it's been earned. */
+  achievementList(): { name: string; description: string; got: boolean }[] {
+    return ACHIEVEMENTS.map(a => ({ name: a.name, description: a.description, got: this.progress.got.has(a.id) }));
   }
 
   /** Crafting stations within reach (4 blocks) of the player. */
@@ -799,6 +863,7 @@ export class Game {
       this.chests.set(i, inv);
     }
     this.dirty = true;
+    this.openChestInv = inv;
     this.openInventory(inv);
   }
 
@@ -812,6 +877,7 @@ export class Game {
       setTimeout(() => {
         this.time = 0.02;
         this.hud.toast("Good morning");
+        this.progress.unlock("sleep");
       }, 900);
     } else {
       this.hud.toast("Respawn point set · you can sleep at night");
@@ -854,6 +920,7 @@ export class Game {
 
   private die(): void {
     if (this.death.isOpen) return;
+    this.progress.died();
     const p = this.player.pos;
     if (!this.rules.keepInventory) {
       // Everything you carried spills out where you fell.
@@ -958,6 +1025,7 @@ export class Game {
       spawn: { x: this.spawn.x, y: this.spawn.y, z: this.spawn.z },
       rules: this.rules,
       selectedSlot: this.slot,
+      progress: this.progress.save(this.tipStep),
       chests: Object.fromEntries([...this.chests].filter(([, inv]) => !inv.isEmpty()).map(([i, inv]) => [String(i), inv.save()])),
     });
     updateWorldMeta(this.meta.id, { lastPlayed: Date.now(), mode: this.mode });
